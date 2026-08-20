@@ -40,9 +40,6 @@ end
 storage.quality = "legendary"
 storage.strafer = "behemoth-spitter"
 storage.stomper = "behemoth-spitter"
-storage.demo_rng = 20
-storage.demo_quality = "normal"
-storage.demo = "small-demolisher"
 storage.recently_reset = "false"
 storage.victory = false
 storage.nested_recently = false
@@ -178,9 +175,6 @@ local on_surface_cleared = function(event)
 	storage.recently_reset = "true"
 	storage.strafer = "behemoth-spitter"
 	storage.stomper = "behemoth-spitter"
-	storage.demo_rng = 20
-	storage.demo_quality = "normal"
-	storage.demo = "small-demolisher"
     storage.victory = false
 	game.map_settings.enemy_expansion.settler_group_min_size = 8
 	game.map_settings.enemy_expansion.settler_group_max_size = 9
@@ -305,12 +299,6 @@ function(event)
     if event.prototype.type == "unit-spawner" then
 	    game.surfaces[1].create_entity{name = storage.strafer, position = event.position, quality = "legendary"}
 	    game.surfaces[1].create_entity{name = storage.stomper, position = event.position, quality = storage.quality}
-    	if game.forces["enemy"].get_evolution_factor(1) > 0.8 then
-	        if math.random(1, storage.demo_rng) == 1 then
-				local territory = game.surfaces[1].get_territory_for_chunk({0,0}) 
-	            game.surfaces[1].create_segmented_unit{name = storage.demo, position = event.position, quality = storage.demo_quality, territory = territory}
-	        end
-	    end
     else
         if math.random(1, 10) == 1 then
             game.surfaces[event.surface_index].create_entity{name = "grenade", target = event.position, position = event.position, force = "player", base_damage_modifiers = {damage_modifier = 0.43}}
@@ -450,21 +438,13 @@ script.on_nth_tick(3600, function()
     game.map_settings.enemy_evolution.time_factor = 0.0002
 	end
 	if evo > 0.85 and evo < 0.95 then
-	storage.demo_quality = "legendary"
 	game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.125
     game.map_settings.enemy_evolution.time_factor = 0.0004
 	end
 	if evo > 0.95 and evo < 0.97 then
-	storage.demo = "medium-demolisher"
     game.map_settings.enemy_evolution.time_factor = 0.0008
 	end
-	if evo > 0.97 and evo < 0.98 then
-	storage.demo = "big-demolisher"
-	end
-	if evo > 0.98 then
-	storage.demo_rng = 5
-	end
-    
+
 end)
 -------------------------------------------------------------------
 local on_space_platform_changed_state = function(event)
