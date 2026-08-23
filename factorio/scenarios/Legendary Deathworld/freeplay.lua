@@ -79,14 +79,10 @@ local on_research_finished = function(event)
 		game.forces["player"].recipes["defender-capsule"].productivity_bonus = 1
         game.forces["player"].following_robots_lifetime_modifier = 4
 	end
-	local player_count = 0
-	for k, players in pairs (game.connected_players) do
-		player_count = player_count + 1
-	end
+    local player_count = #game.connected_players
     local research = event.research.name
-	local evo = game.forces["enemy"].get_evolution_factor("nauvis")
-	local progress_message = string.format("Evolution: %f | Players: %d | Researched: %s\n", evo, player_count, tostring(research))
-	helpers.write_file("progress/progress.log", progress_message, true, 0)
+    local evo = game.forces["enemy"].get_evolution_factor("nauvis")
+    log(string.format("research: evolution=%f, players=%d, researched=%s", evo, player_count, tostring(research)))
 end
 -----------------------------------------------------------------------
 script.on_event(defines.events.on_entity_died,

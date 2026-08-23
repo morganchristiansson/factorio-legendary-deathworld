@@ -279,13 +279,10 @@ end
 
 -- Global on purpose: control.lua's /reset command calls reset() directly.
 function reset()
-    local science = game.forces["player"].get_item_production_statistics(1).get_input_count "science"
-        if (science > 0) then
-            local minutes = math.floor(game.ticks_played / 3600)
-            local victory = storage.victory
-            local log_message = string.format("%s_%d_%d", tostring(victory), science, minutes)
-            helpers.write_file("reset/reset.log", log_message, false, 0)
-        end
+    log(string.format("map reset: victory=%s, science=%d, minutes=%d",
+        tostring(storage.victory),
+        game.forces["player"].get_item_production_statistics(1).get_input_count "science",
+        math.floor(game.ticks_played / 3600)))
     change_seed()
     -- We clear the main surfaces instead of deleting them because the seed can't be changed if they are deleted..
     game.surfaces["nauvis"].clear(true)

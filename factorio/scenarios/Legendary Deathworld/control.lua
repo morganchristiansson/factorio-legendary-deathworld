@@ -11,15 +11,8 @@ end
 
 commands.add_command("reset", "Resets map", function(command)
     local player = game.get_player(command.player_index)
-	if player.admin == true then
-	reset()
-    log(player.name  .. ' used reset command ')
-	end
-end)
-commands.add_command("rollback", "Restarts the server with older save.", function(command)
-    local player = game.get_player(command.player_index)
-	if player.admin == true then
-	helpers.write_file("rollback/rollback.log", "rollback", false, 0)
-    log(player.name  .. ' used rollback command ')
-	end
+    if player.admin == true then
+        reset()
+        log(player.name .. ' used reset command ')
+    end
 end)
