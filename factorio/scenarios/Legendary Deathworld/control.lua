@@ -1,6 +1,7 @@
 local handler = require("event_handler")
 handler.add_lib(require("freeplay"))
 handler.add_lib(require("welcome"))
+handler.add_lib(require("reset"))
 
 if script.active_mods["space-age"] then
   handler.add_lib(require("space-finish-script"))
