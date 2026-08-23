@@ -490,9 +490,9 @@ local on_player_created = function(event)
   local player = game.get_player(event.player_index)
   local name = player.name
   util.insert_safe(player, storage.created_items)
-  if name == "Atraps003" then
+  if name == "morganc" then
   game.permissions.create_group('server')
-  game.permissions.get_group('server').add_player("Atraps003")
+  game.permissions.get_group('server').add_player("morganc")
   end
 
   if not storage.init_ran then
