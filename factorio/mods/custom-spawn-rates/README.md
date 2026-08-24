@@ -79,8 +79,3 @@ in the dev container (lua5.4 is part of the workspace image):
 ```sh
 lua5.4 tests/run_tests.lua
 ```
-
-## Origin
-
-Extracted from the `ldw-server` scenario mod (Legendary Deathworld), which
-used the same mechanism to add pentapod stompers/strafers to Nauvis nests.
