@@ -1,6 +1,7 @@
 local util = require("util")
 local crash_site = require("crash-site")
 local reset = require("reset")
+local jail = require("jail")
 
 local created_items = function()
   return
@@ -48,6 +49,11 @@ end
 -----------------------------------------------------------------------
 local on_player_respawned = function(event)
     local player = game.get_player(event.player_index)
+    -- Jailed players respawn straight back into the pit, without kit.
+    if jail.is_jailed(player.name) then
+        jail.on_player_respawned(player)
+        return
+    end
     if storage.recently_reset == "true" then
         storage.recently_reset = "false"
         reset.on_first_respawn(player)
