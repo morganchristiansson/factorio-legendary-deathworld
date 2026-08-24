@@ -283,11 +283,10 @@ end
 -- on defeat conditions.
 Public.perform_reset = function(actor)
     -- actor: player name for manual /reset runs, nil for automatic resets.
-    -- Logged as separate fields so a player named e.g. "defeat-condition"
-    -- can't blur which path fired.
-    log(string.format("map reset: manual=%s, actor=%s, victory=%s, science=%d, minutes=%d",
-        tostring(actor ~= nil),
-        actor or "-",
+    -- Manual resets are inferred by the presence of the actor field.
+    local trigger = actor and (" actor=" .. actor .. ",") or ""
+    log(string.format("map reset:%s victory=%s, science=%d, minutes=%d",
+        trigger,
         tostring(storage.victory),
         game.forces["player"].get_item_production_statistics(1).get_input_count "science",
         math.floor(game.ticks_played / 3600)))
