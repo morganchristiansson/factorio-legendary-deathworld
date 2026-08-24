@@ -1,0 +1,11 @@
+{
+  "name": "custom-spawn-rates",
+  "version": "0.1.0",
+  "title": "Custom Spawn Rates",
+  "description": "Per-nest control over enemy spawn composition. Adds a startup setting for every unit-spawner prototype (biter-spawner, spitter-spawner, egg-rafts, plus any added by mods such as Colossal Enemies). Each setting takes entries like 'medium-biter 0.2=0.00,0.6=0.40' to add or override a unit's evolution/rate table, or '-small-biter' to remove a unit from the nest entirely. Rates are relative shares of that nest's spawns, normalised across its units at every evolution level — same semantics as vanilla result_units.",
+  "author": "morganc",
+  "factorio_version": "2.0",
+  "dependencies": [
+    "base >= 2.0.0"
+  ]
+}
