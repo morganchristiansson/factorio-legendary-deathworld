@@ -284,8 +284,8 @@ end
 Public.perform_reset = function(actor)
     -- actor: player name for manual /reset runs, nil for automatic resets.
     -- Manual resets are inferred by the presence of the actor field.
-    local trigger = actor and (" actor=" .. actor .. ",") or ""
-    log(string.format("map reset:%s victory=%s, science=%d, minutes=%d",
+    local trigger = actor and (", actor=" .. actor) or ""
+    log(string.format("event=map-reset%s, victory=%s, science=%d, minutes=%d",
         trigger,
         tostring(storage.victory),
         game.forces["player"].get_item_production_statistics(1).get_input_count "science",

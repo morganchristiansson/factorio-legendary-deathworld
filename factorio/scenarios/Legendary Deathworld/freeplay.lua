@@ -17,6 +17,17 @@ local respawn_items = function()
   }
 end
 
+-- Common metadata formatting so every log() line parses uniformly:
+-- event=<name>, key=value pairs, comma-separated.
+local format_position = function(position)
+    return string.format("%.1f,%.1f", position.x, position.y)
+end
+
+local format_actor = function(player_index)
+    local player = game.get_player(player_index)
+    return player and player.name or "unknown"
+end
+
 -----------------------------------------------------------------------
 storage.quality = "legendary"
 storage.strafer = "behemoth-spitter"
@@ -82,7 +93,22 @@ local on_research_finished = function(event)
     local player_count = #game.connected_players
     local research = event.research.name
     local evo = game.forces["enemy"].get_evolution_factor("nauvis")
-    log(string.format("research: evolution=%f, players=%d, researched=%s", evo, player_count, tostring(research)))
+    log(string.format("event=research-finished, research=%s, evolution=%.4f, players=%d", research, evo, player_count))
+end
+-----------------------------------------------------------------------
+local on_player_died = function(event)
+    local player = game.get_player(event.player_index)
+    if not player then
+        return
+    end
+    local cause = "unknown"
+    if event.cause and event.cause.valid then
+        cause = event.cause.name
+    end
+    log(string.format("event=player-died, actor=%s, position=%s, cause=%s",
+        player.name,
+        format_position(player.position),
+        cause))
 end
 -----------------------------------------------------------------------
 script.on_event(defines.events.on_entity_died,
@@ -289,14 +315,18 @@ end
 
 script.on_event(defines.events.on_player_used_capsule, function(e)
     if e.item.name ~= 'artillery-targeting-remote' then return end
-    local player = game.get_player(e.player_index)
-    log(player.name .. ' used artillery targeting remote at ' .. e.position.x .. ', ' .. e.position.y)
+    log(string.format("event=artillery-target, actor=%s, position=%s",
+        format_actor(e.player_index), format_position(e.position)))
 end)
 
 -----------------------------------------------------------------------
 local on_player_flushed_fluid = function(event)
-    local player = game.get_player(event.player_index)
-    log(player.name .. ' flushed fluid ' .. event.fluid .. ' amount ' .. event.amount .. ' from entity ' .. event.entity.name .. ' at ' .. event.entity.gps_tag)
+    log(string.format("event=fluid-flushed, actor=%s, fluid=%s, amount=%s, entity=%s, position=%s",
+        format_actor(event.player_index),
+        event.fluid,
+        event.amount,
+        event.entity.name,
+        format_position(event.entity.position)))
 end
 -----------------------------------------------------------------------
 
@@ -407,6 +437,7 @@ freeplay.events =
 {
   [defines.events.on_player_created] = on_player_created,
   [defines.events.on_player_respawned] = on_player_respawned,
+  [defines.events.on_player_died] = on_player_died,
   [defines.events.on_chunk_generated] = on_chunk_generated,
   [defines.events.on_research_finished] = on_research_finished,
   [defines.events.on_unit_group_finished_gathering] = on_unit_group_finished_gathering,
