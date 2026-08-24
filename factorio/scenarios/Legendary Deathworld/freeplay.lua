@@ -239,13 +239,42 @@ local on_biter_base_built = function(event)
 	local x = event.entity.position.x
 	local y = event.entity.position.y
 	if (x > -34 and x < 34 and y > -34 and y < 34) then
-		game.print("[color=acid][font=default-large-bold]Biter nests growing near spawn. Defeat imminent![/font][/color]")
+		game.print({"ld-announcement", {"ld-defeat-imminent"}})
 		local nest_count = game.surfaces[1].count_entities_filtered{area={left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}},type={"turret","unit-spawner"}}
 		if nest_count > 3 or game.ticks_played < 36000 then
 			reset.perform_reset()
 		end
 	end
 end
+-----------------------------------------------------------------------
+-- Evolution stages: applied and announced once, when the threshold is first
+-- crossed; texts come from locale/en/freeplay.cfg (ld-evo-milestone-*)
+local evo_stages = {
+    {0.20, "ld-evo-milestone-20", function()
+        game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.5
+        game.map_settings.enemy_evolution.time_factor = 0.00005
+        storage.strafer = "small-strafer-pentapod"
+        storage.stomper = "small-stomper-pentapod"
+    end},
+    {0.60, "ld-evo-milestone-60", function()
+        game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.25
+        game.map_settings.enemy_evolution.time_factor = 0.00009
+        storage.strafer = "medium-strafer-pentapod"
+        storage.stomper = "medium-stomper-pentapod"
+    end},
+    {0.70, "ld-evo-milestone-70", function()
+        game.map_settings.enemy_evolution.time_factor = 0.0002
+        storage.strafer = "big-strafer-pentapod"
+        storage.stomper = "big-stomper-pentapod"
+    end},
+    {0.85, "ld-evo-milestone-85", function()
+        game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.125
+        game.map_settings.enemy_evolution.time_factor = 0.0004
+    end},
+    {0.95, "ld-evo-milestone-95", function()
+        game.map_settings.enemy_evolution.time_factor = 0.0008
+    end},
+}
 -----------------------------------------------------------------------
 script.on_nth_tick(3600, function()
     storage.nested_recently = false
@@ -265,31 +294,16 @@ script.on_nth_tick(3600, function()
 	end
 
     -- starting time evo is 0.00004
-	local evo = game.forces["enemy"].get_evolution_factor(1)
-    if evo > 0.2 and evo < 0.6 then
- 	game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.5
-	game.map_settings.enemy_evolution.time_factor = 0.00005
-	storage.strafer = "small-strafer-pentapod"
-	storage.stomper = "small-stomper-pentapod"
-   	end
-	if evo > 0.6 and evo < 0.7 then
-	game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.25
-	storage.strafer = "medium-strafer-pentapod"
-	storage.stomper = "medium-stomper-pentapod"
-	game.map_settings.enemy_evolution.time_factor = 0.00009
-	end
-	if evo > 0.7 and evo < 0.8 then
-	storage.strafer = "big-strafer-pentapod"
-	storage.stomper = "big-stomper-pentapod"
-    game.map_settings.enemy_evolution.time_factor = 0.0002
-	end
-	if evo > 0.85 and evo < 0.95 then
-	game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.125
-    game.map_settings.enemy_evolution.time_factor = 0.0004
-	end
-	if evo > 0.95 and evo < 0.97 then
-    game.map_settings.enemy_evolution.time_factor = 0.0008
-	end
+    local evo = game.forces["enemy"].get_evolution_factor(1)
+    storage.evo_stage = storage.evo_stage or 0
+    for i, stage in ipairs(evo_stages) do
+        if evo >= stage[1] and storage.evo_stage < i then
+            storage.evo_stage = i
+            stage[3]()
+            game.print({"ld-announcement", {stage[2]}})
+            log(string.format("event=evo-stage, evolution=%.2f", stage[1]))
+        end
+    end
 
 end)
 -----------------------------------------------------------------------

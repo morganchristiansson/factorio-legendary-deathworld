@@ -190,6 +190,7 @@ local on_surface_cleared = function(event)
     storage.strafer = "behemoth-spitter"
     storage.stomper = "behemoth-spitter"
     storage.victory = false
+    storage.evo_stage = 0
     game.map_settings.enemy_expansion.settler_group_min_size = 8
     game.map_settings.enemy_expansion.settler_group_max_size = 9
     game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 1
