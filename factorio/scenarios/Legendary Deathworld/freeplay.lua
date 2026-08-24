@@ -1,5 +1,4 @@
 local util = require("util")
-local crash_site = require("crash-site")
 local reset = require("reset")
 local jail = require("jail")
 
@@ -360,10 +359,6 @@ local on_player_created = function(event)
   reset.setup_first_round(player)
 end
 
-local on_player_display_refresh = function(event)
-  crash_site.on_player_display_refresh(event)
-end
-
 local freeplay_interface =
 {
   get_created_items = function()
@@ -377,21 +372,6 @@ local freeplay_interface =
   end,
   set_respawn_items = function(map)
     storage.respawn_items = map or error("Remote call parameter to freeplay set respawn items can't be nil.")
-  end,
-  set_skip_intro = function(bool)
-    storage.skip_intro = bool
-  end,
-  get_skip_intro = function()
-    return storage.skip_intro
-  end,
-  set_custom_intro_message = function(message)
-    storage.custom_intro_message = message
-  end,
-  get_custom_intro_message = function()
-    return storage.custom_intro_message
-  end,
-  set_chart_distance = function(value)
-    storage.chart_distance = tonumber(value) or error("Remote call parameter to freeplay set chart distance must be a number")
   end,
   get_disable_crashsite = function()
     return storage.disable_crashsite
@@ -463,9 +443,7 @@ freeplay.events =
   [defines.events.on_unit_group_finished_gathering] = on_unit_group_finished_gathering,
   [defines.events.on_biter_base_built] = on_biter_base_built,
   [defines.events.on_space_platform_changed_state] = on_space_platform_changed_state,
-  [defines.events.on_player_flushed_fluid] = on_player_flushed_fluid,
-  [defines.events.on_player_display_resolution_changed] = on_player_display_refresh,
-  [defines.events.on_player_display_scale_changed] = on_player_display_refresh
+  [defines.events.on_player_flushed_fluid] = on_player_flushed_fluid
 }
 
 freeplay.on_configuration_changed = function()
@@ -485,7 +463,6 @@ freeplay.on_init = function()
   storage.respawn_items = respawn_items()
 
   if is_debug() then
-    storage.skip_intro = true
     storage.disable_crashsite = true
   end
 
