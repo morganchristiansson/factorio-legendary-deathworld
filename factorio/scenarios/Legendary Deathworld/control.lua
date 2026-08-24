@@ -13,7 +13,6 @@ end
 commands.add_command("reset", "Resets map", function(command)
     local player = game.get_player(command.player_index)
     if player.admin == true then
-        reset.perform_reset()
-        log(player.name .. ' used reset command ')
+        reset.perform_reset(player.name)
     end
 end)

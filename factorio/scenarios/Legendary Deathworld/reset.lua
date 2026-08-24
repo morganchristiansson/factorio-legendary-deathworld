@@ -279,9 +279,11 @@ Public.on_first_respawn = function(player)
 end
 
 -- Wipes and regenerates all main surfaces with a fresh seed. Called by
--- control.lua's /reset command and by freeplay.lua on defeat conditions.
-Public.perform_reset = function()
-    log(string.format("map reset: victory=%s, science=%d, minutes=%d",
+-- control.lua's /reset command (with the acting player) and by freeplay.lua
+-- on defeat conditions.
+Public.perform_reset = function(triggered_by)
+    log(string.format("map reset: triggered_by=%s, victory=%s, science=%d, minutes=%d",
+        triggered_by or "defeat-condition",
         tostring(storage.victory),
         game.forces["player"].get_item_production_statistics(1).get_input_count "science",
         math.floor(game.ticks_played / 3600)))
