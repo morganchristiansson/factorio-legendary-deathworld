@@ -1,7 +1,8 @@
 -- Map reset and staged map reveal.
 -----------------------------------------------------------------------
--- reset() wipes and regenerates the map with a fresh seed; control.lua's
--- /reset command calls it as a global. The staged reveal replaces the old
+-- Public.perform_reset() wipes and regenerates the map with a fresh seed;
+-- control.lua's /reset command and freeplay.lua both call it. The staged
+-- reveal replaces the old
 -- behaviour of generating + charting ~1500 chunks in a single tick, which
 -- froze the server for seconds after every reset.
 -----------------------------------------------------------------------
@@ -277,8 +278,9 @@ Public.on_first_respawn = function(player)
     end
 end
 
--- Global on purpose: control.lua's /reset command calls reset() directly.
-function reset()
+-- Wipes and regenerates all main surfaces with a fresh seed. Called by
+-- control.lua's /reset command and by freeplay.lua on defeat conditions.
+Public.perform_reset = function()
     log(string.format("map reset: victory=%s, science=%d, minutes=%d",
         tostring(storage.victory),
         game.forces["player"].get_item_production_statistics(1).get_input_count "science",

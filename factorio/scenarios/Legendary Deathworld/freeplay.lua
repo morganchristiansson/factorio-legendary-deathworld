@@ -36,13 +36,13 @@ local on_chunk_generated = function(event)
 end
 -----------------------------------------------------------------------
 local on_player_respawned = function(event)
-	local player = game.get_player(event.player_index)
-	if storage.recently_reset == "true" then
-		storage.recently_reset = "false"
-		reset.on_first_respawn(player)
-	else
-	util.insert_safe(player, storage.respawn_items)
-	end
+    local player = game.get_player(event.player_index)
+    if storage.recently_reset == "true" then
+        storage.recently_reset = "false"
+        reset.on_first_respawn(player)
+    else
+        util.insert_safe(player, storage.respawn_items)
+    end
 end
 -----------------------------------------------------------------------
 local on_research_finished = function(event)
@@ -210,7 +210,7 @@ local on_biter_base_built = function(event)
 		game.print("[color=acid][font=default-large-bold]Biter nests growing near spawn. Defeat imminent![/font][/color]")
 		local nest_count = game.surfaces[1].count_entities_filtered{area={left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}},type={"turret","unit-spawner"}}
 		if nest_count > 3 or game.ticks_played < 36000 then
-			reset()
+			reset.perform_reset()
 		end
 	end
 end
@@ -264,13 +264,13 @@ end)
 local on_space_platform_changed_state = function(event)
 	if event.platform.space_location ~= nil then
 		if event.platform.space_location.name == "solar-system-edge" then
-			game.set_game_state{game_finished = true, player_won = true, can_continue = true, victorious_force = player}
+			game.set_game_state{game_finished = true, player_won = true, can_continue = true, victorious_force = game.forces["player"]}
             storage.victory = true
 		end
 	end
 	if event.platform.last_visited_space_location ~= nil then
 		if event.platform.last_visited_space_location.name == "solar-system-edge" then
-			game.set_game_state{game_finished = true, player_won = true, can_continue = true, victorious_force = player}
+			game.set_game_state{game_finished = true, player_won = true, can_continue = true, victorious_force = game.forces["player"]}
             storage.victory = true
 		end
 	end
