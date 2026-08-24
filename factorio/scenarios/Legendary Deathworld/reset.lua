@@ -281,9 +281,13 @@ end
 -- Wipes and regenerates all main surfaces with a fresh seed. Called by
 -- control.lua's /reset command (with the acting player) and by freeplay.lua
 -- on defeat conditions.
-Public.perform_reset = function(triggered_by)
-    log(string.format("map reset: triggered_by=%s, victory=%s, science=%d, minutes=%d",
-        triggered_by or "defeat-condition",
+Public.perform_reset = function(actor)
+    -- actor: player name for manual /reset runs, nil for automatic resets.
+    -- Logged as separate fields so a player named e.g. "defeat-condition"
+    -- can't blur which path fired.
+    log(string.format("map reset: manual=%s, actor=%s, victory=%s, science=%d, minutes=%d",
+        tostring(actor ~= nil),
+        actor or "-",
         tostring(storage.victory),
         game.forces["player"].get_item_production_statistics(1).get_input_count "science",
         math.floor(game.ticks_played / 3600)))
