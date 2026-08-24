@@ -96,10 +96,7 @@ Public.events =
       return
     end
     ensure_button(player)
-    -- Only pop up the window automatically for brand new players
-    if player.online_time == 0 then
-      Public.show(player)
-    end
+    Public.show(player)
   end,
 
   [defines.events.on_gui_closed] = function(event)
