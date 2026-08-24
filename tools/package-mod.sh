@@ -10,7 +10,7 @@
 #   tools/package-mod.sh [mod-dir]          # default: custom-spawn-rates
 #   tools/package-mod.sh --out <dir> [mod]  # override output directory
 #
-# Requires: zip, python3, unzip (listing)   (see Dockerfile)
+# Requires: zip, unzip (listing), grep -P   (see Dockerfile)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,8 +31,16 @@ SRC_DIR="$MODS_DIR/$MOD"
 [[ -d "$SRC_DIR" ]] || { echo "error: no such mod directory: $SRC_DIR" >&2; exit 1; }
 [[ -f "$SRC_DIR/info.json" ]] || { echo "error: $SRC_DIR has no info.json" >&2; exit 1; }
 
-NAME="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$SRC_DIR/info.json")"
-VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$SRC_DIR/info.json")"
+# Fields are one-per-line in our info.json; grep suffices, no JSON parser needed.
+json_field() {
+    local field="$1"
+    grep -oP '"'$field'"\s*:\s*"\K[^"]+' "$SRC_DIR/info.json" | head -n1
+}
+NAME="$(json_field name)"
+VERSION="$(json_field version)"
+[[ -n "$NAME" && -n "$VERSION" ]] || {
+    echo "error: could not read name/version from $SRC_DIR/info.json" >&2; exit 1;
+}
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
