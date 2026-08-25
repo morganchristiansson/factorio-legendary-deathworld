@@ -36,6 +36,44 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
   `tools/update-lua-in-save.sh <save.zip>` (see below) — editing the
   scenario folder alone does not update running saves.
 
+## Runtime environment facts (verified empirically)
+
+- **Module scope vs handlers:** at control.lua top level, `game` is `nil` and
+  `storage` is a throwaway empty table (writes are discarded when the save's
+  storage deserializes). `prototypes` *is* readable. Consequences:
+  - Static `script.set_event_filter` / `script.on_event` calls at module scope
+    re-execute every session and are the correct way to establish baseline
+    filters — no `.on_load` needed for them.
+  - Anything needing `game` or persisted `storage` belongs in handlers/ticks,
+    never at module scope (guard with `if game == nil then return ... end` if a
+    helper must be callable from both).
+- **Event filters are the throttle.** Prefer registering a narrow filter over
+  guarding inside the handler; unfiltered `on_entity_died` fires constantly.
+  When the filter target is dynamic, recompute on change (not per tick) and
+  re-register; keep the handler's own check as cheap belt-and-braces.
+- **Prefer engine data over hardcoded names.** Spawn tables
+  (`prototypes.entity["spitter-spawner"].result_units`, weights per
+  `spawn_points`) and unit stats (`attack_parameters.damage_modifier`)
+  describe what actually spawns with mods/settings applied. Deriving tiers
+  from them keeps scenario code stable across enemy mods and rebalances.
+  Note: spawn-point windows interpolate; unit `max_health` is NOT exposed.
+- **Edge-trigger state changes.** Per-tick range conditionals re-fire forever;
+  store progress in `storage` (e.g. `evo_stage`, `apex_spitter`) and act only
+  on transitions. Reset hooks (`reset.lua`) must re-arm these sentinels.
+
+## Design conventions
+
+- Announcements go through locale: a shared wrapper key
+  (`ld-announcement=[color=acid][font=default-large-bold]__1__[/font][/color]`)
+  supplies styling once; message keys stay plain prose. Dynamic entity names
+  use their prototype's `localised_name` as a fill parameter.
+- One remote-interface member per live feature only — no vestigial
+  stock-freeplay accessors (skip_intro/chart_distance-style remnants were
+  removed; don't reintroduce them).
+- Simple beats clever: a pure compute function + a change-guarded applier +
+  one callsite in the minute tick is the preferred shape (see apex-spitter
+  logic in freeplay.lua).
+
 ## Style
 
 - Indentation: **4 spaces**, never tabs, in all added or updated code.

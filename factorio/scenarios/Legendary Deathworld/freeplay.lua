@@ -116,6 +116,55 @@ local on_player_died = function(event)
         cause))
 end
 -----------------------------------------------------------------------
+-- Deaths of the highest-damage spitter in rotation (evolution permitting)
+-- become nesting-spot candidates; modded tiers join automatically.
+-- false = no apex yet; forces the first update to register the base filter.
+storage.apex_spitter = false
+
+local current_apex_spitter = function()
+    -- evolution is only readable inside handlers
+    if game == nil then
+        return nil, 0
+    end
+    local evo = game.forces["enemy"].get_evolution_factor(1)
+    if evo < 0.9 then
+        return nil, evo -- matches when behemoth spitters appear naturally
+    end
+    local best_damage, best_name = 0, nil
+    for _, entry in ipairs(prototypes.entity["spitter-spawner"].result_units) do
+        -- a unit counts once evolution reaches its first spawn threshold
+        local first_window = entry.spawn_points[1]
+        if first_window ~= nil and evo >= first_window.evolution_factor then
+            local attack = prototypes.entity[entry.unit].attack_parameters
+            if attack ~= nil and attack.damage_modifier > best_damage then
+                best_damage, best_name = attack.damage_modifier, entry.unit
+            end
+        end
+    end
+    return best_name, evo
+end
+
+local update_apex_spitter = function()
+    local filter = {
+        {filter = "name", name = "huge-metallic-asteroid"},
+        {filter = "name", name = "huge-carbonic-asteroid"},
+        {filter = "name", name = "huge-oxide-asteroid"},
+    }
+    local name, evo = current_apex_spitter()
+    if name ~= storage.apex_spitter then
+        filter[#filter + 1] = {filter = "name", name = name}
+        script.set_event_filter(defines.events.on_entity_died, filter)
+        storage.apex_spitter = name
+        log(string.format("event=apex-spitter, evolution=%.2f, unit=%s", evo, name or "none"))
+        if name ~= nil then
+            -- a new deadliest spitter is a step change in difficulty
+            game.print({"ld-announcement", {"ld-apex-spitter", prototypes.entity[name].localised_name}})
+        end
+    end
+end
+
+update_apex_spitter()
+-----------------------------------------------------------------------
 script.on_event(defines.events.on_entity_died,
 function(event)
     if event.entity.type == "asteroid" then
@@ -137,7 +186,6 @@ function(event)
     end
 end
 )
-script.set_event_filter(defines.events.on_entity_died, {{filter = "name", name = "behemoth-spitter"}, {filter = "name", name = "huge-metallic-asteroid"}, {filter = "name", name = "huge-carbonic-asteroid"}, {filter = "name", name = "huge-oxide-asteroid"}})
 -----------------------------------------------------------------------
 script.on_event(defines.events.on_post_entity_died,
 function(event)
@@ -303,7 +351,7 @@ script.on_nth_tick(3600, function()
             log(string.format("event=evo-stage, evolution=%.2f", stage[1]))
         end
     end
-
+    update_apex_spitter()
 end)
 -----------------------------------------------------------------------
 local on_space_platform_changed_state = function(event)
@@ -467,7 +515,6 @@ freeplay.on_init = function()
   end
 
   init_ending_info()
-
 end
 
 return freeplay
