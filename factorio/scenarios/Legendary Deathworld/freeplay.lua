@@ -145,21 +145,22 @@ local current_apex_spitter = function()
 end
 
 local update_apex_spitter = function()
+    local name, evo = current_apex_spitter()
+    if name == storage.apex_spitter then return end
     local filter = {
         {filter = "name", name = "huge-metallic-asteroid"},
         {filter = "name", name = "huge-carbonic-asteroid"},
         {filter = "name", name = "huge-oxide-asteroid"},
     }
-    local name, evo = current_apex_spitter()
-    if name ~= storage.apex_spitter then
+    if name ~= nil then
         filter[#filter + 1] = {filter = "name", name = name}
-        script.set_event_filter(defines.events.on_entity_died, filter)
-        storage.apex_spitter = name
-        log(string.format("event=apex-spitter, evolution=%.2f, unit=%s", evo, name or "none"))
-        if name ~= nil then
-            -- a new deadliest spitter is a step change in difficulty
-            game.print({"ld-announcement", {"ld-apex-spitter", prototypes.entity[name].localised_name}})
-        end
+    end
+    script.set_event_filter(defines.events.on_entity_died, filter)
+    storage.apex_spitter = name
+    log(string.format("event=apex-spitter, evolution=%.2f, unit=%s", evo, name or "none"))
+    if name ~= nil and game ~= nil then
+        -- a new deadliest spitter is a step change in difficulty
+        game.print({"ld-announcement", {"ld-apex-spitter", prototypes.entity[name].localised_name}})
     end
 end
 
