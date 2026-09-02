@@ -42,7 +42,10 @@
     "settler_group_min_size": 8,
     "settler_group_max_size": 9,
     "min_expansion_cooldown": 3500,
-    "max_expansion_cooldown": 3600
+    "max_expansion_cooldown": 3600,
+    "evolution_group_size_factor": 4,
+    "min_expansion_distance": 3,
+    "build_base_unit_dispatch_cooldown": 600
   },
   "unit_group":
   {
