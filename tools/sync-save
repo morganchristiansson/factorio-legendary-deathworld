@@ -7,23 +7,27 @@
 # Usage:
 #   tools/update-lua-in-save.sh <save.zip> [more-saves.zip...]
 #   tools/update-lua-in-save.sh --dry-run <save.zip>
+#   tools/update-lua-in-save.sh --force <save.zip>   # skip running-server guard
 #
 # Requires: zip, unzip   (see Dockerfile)
 #
-# IMPORTANT: the Factorio server must be STOPPED before running this.
+# IMPORTANT: on a dedicated server, stop Factorio before running this.
 # Stopping the server writes its final state into the save; updating the zip
-# while the server runs means your changes get overwritten by that final
-# write. This script refuses to run if a factorio process is detected.
+# while it runs means your changes get overwritten by that final write. This
+# script refuses to run if a factorio process is detected -- override with
+# --force when testing locally.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCENARIO_DIR="$REPO_ROOT/factorio/scenarios/Legendary Deathworld"
 
 DRY_RUN=0
+FORCE=0
 SAVES=()
 for arg in "$@"; do
   case "$arg" in
     --dry-run|-n) DRY_RUN=1 ;;
+    --force|-f) FORCE=1 ;;
     -h|--help) sed '1d' "$0" | grep '^#' | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) SAVES+=("$arg") ;;
   esac
@@ -48,9 +52,14 @@ cd "$REPO_ROOT"
 (( ${#SYNC_FILES[@]} > 2 )) || { echo "error: no .lua files found in $SCENARIO_DIR" >&2; exit 1; }
 
 if pgrep -x factorio >/dev/null 2>&1; then
-  echo "error: a factorio process appears to be running."
-  echo "       Stop the server first (its shutdown save must land before we edit the zip)."
-  exit 1
+  if (( FORCE )); then
+    echo "warning: a factorio process is running; continuing anyway (--force)."
+    echo "         If it saves after this, your zip edits will be overwritten."
+  else
+    echo "error: a factorio process appears to be running."
+    echo "       Stop the server first, or pass --force when testing locally."
+    exit 1
+  fi
 fi
 
 fail() { echo "error: $*" >&2; exit 1; }

@@ -1,0 +1,23 @@
+{
+  "wall-repair-ignore": {
+    "value": ""
+  },
+  "custom-spawn-rates-biter-spawner": {
+    "value": "small-stomper-pentapod 0.35=0.01"
+  },
+  "custom-spawn-rates-egg-raft": {
+    "value": ""
+  },
+  "custom-spawn-rates-extra": {
+    "value": ""
+  },
+  "custom-spawn-rates-small-egg-raft": {
+    "value": ""
+  },
+  "custom-spawn-rates-spitter-spawner": {
+    "value": "small-strafer-pentapod 0.35=0.01"
+  },
+  "eon-remove-space-platform-restrictions": {
+    "value": false
+  }
+}

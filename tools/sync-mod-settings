@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+#
+# View and update Factorio startup mod settings without the game UI.
+#
+# The binary mod-settings.dat format cannot be edited by hand (or with
+# jq), so this script fetches a single-file DAT<->JSON codec
+# (whitequark/factorio-data-codec, 0BSD) into an untracked runtime cache
+# and drives it with python3 + jq:
+#
+#   tools/sync-mod-settings view [--dat PATH] [--out PATH]
+#       Decode mod-settings.dat and print the startup section as JSON
+#       (stdout, or write to --out).
+#   tools/sync-mod-settings diff [--dat PATH] [--settings PATH]
+#       Show startup settings that differ between the live .dat and the
+#       tracked factorio/data/mod-settings.json.
+#   tools/sync-mod-settings apply [--dat PATH] [--settings PATH]
+#       Merge the tracked startup settings into mod-settings.dat.
+#       Backs up the .dat first and verifies afterwards.
+#   tools/sync-mod-settings export [--dat PATH] [--settings PATH]
+#       Write the live startup section to the tracked JSON file
+#       (pins in-game tweaks for commit).
+#
+# Only the "startup" section is tracked: runtime-global and
+# runtime-per-user (per-player UI prefs) change during play and are left
+# untouched by apply.
+#
+# The codec is NOT committed to the repo: it is downloaded to
+# .cache/factorio-data-codec/ (see .gitignore) and checksum-pinned below.
+# The URL is pinned to a commit on the active upstream repo, so it
+# cannot drift out from under the checksum; re-pin deliberately to
+# pick up upstream fixes.
+#
+# Requires: bash, curl, jq, python3, sha256sum   (see Dockerfile)
+#
+# Env overrides: MOD_SETTINGS_DAT, MOD_SETTINGS_JSON
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+CODEC_URL="https://codeberg.org/whitequark/factorio-data-codec/raw/commit/8efae46aef48b6b51b12d855af3406b76336f092/factorio_data.py"
+CODEC_SHA256="2ec54ed12d3d769e1cc014caaa05c5332f26f26c80f4b47ab2cbada3e71946c4"
+CACHE_DIR=".cache/factorio-data-codec"
+CODEC_PY="$CACHE_DIR/factorio_data.py"
+
+DAT="${MOD_SETTINGS_DAT:-/factorio/mods/mod-settings.dat}"
+SETTINGS="${MOD_SETTINGS_JSON:-factorio/data/mod-settings.json}"
+
+usage() {
+    sed -n '2,32p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
+}
+
+DAT_OVERRIDE=""
+SETTINGS_OVERRIDE=""
+OUT=""
+CMD=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        view|diff|apply|export) CMD="$1"; shift ;;
+        --dat) DAT_OVERRIDE="$2"; shift 2 ;;
+        --settings) SETTINGS_OVERRIDE="$2"; shift 2 ;;
+        --out) OUT="$2"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "error: unknown argument: $1 (try --help)" >&2; exit 2 ;;
+    esac
+done
+[[ -n "$DAT_OVERRIDE" ]] && DAT="$DAT_OVERRIDE"
+[[ -n "$SETTINGS_OVERRIDE" ]] && SETTINGS="$SETTINGS_OVERRIDE"
+[[ -z "$CMD" ]] && { usage >&2; exit 2; }
+
+command -v curl >/dev/null || { echo "error: 'curl' not installed" >&2; exit 1; }
+command -v jq >/dev/null || { echo "error: 'jq' not installed" >&2; exit 1; }
+command -v python3 >/dev/null || { echo "error: 'python3' not installed" >&2; exit 1; }
+[[ -f "$DAT" ]] || { echo "error: no such file: $DAT (override with --dat)" >&2; exit 1; }
+
+# Fetch the codec into the untracked cache dir unless the pinned copy
+# is already there.
+ensure_codec() {
+    if [[ -f "$CODEC_PY" ]] && echo "$CODEC_SHA256  $CODEC_PY" | sha256sum -c - >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "fetching mod-settings codec..." >&2
+    mkdir -p "$CACHE_DIR"
+    curl -fsSL --retry 3 "$CODEC_URL" -o "$CODEC_PY.tmp"
+    mv "$CODEC_PY.tmp" "$CODEC_PY"
+    echo "$CODEC_SHA256  $CODEC_PY" | sha256sum -c - >/dev/null \
+        || { echo "error: codec checksum mismatch (upstream changed?)" >&2; exit 1; }
+}
+
+TMPDIR_WORK="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR_WORK"' EXIT
+
+# Decode $DAT to a full-envelope JSON file ($1 = output path).
+decode_full() {
+    python3 "$CODEC_PY" "$DAT" "$1" 2>/dev/null
+}
+
+# Print the live startup overlay: {"setting-name": {"value": ...}, ...}
+live_startup() {
+    decode_full "$TMPDIR_WORK/live.json"
+    jq '.data.startup' "$TMPDIR_WORK/live.json"
+}
+
+case "$CMD" in
+    view)
+        ensure_codec
+        if [[ -n "$OUT" ]]; then
+            live_startup > "$OUT"
+            echo "wrote $OUT" >&2
+        else
+            live_startup
+        fi
+        ;;
+    diff)
+        ensure_codec
+        [[ -f "$SETTINGS" ]] || { echo "error: no such file: $SETTINGS (run export first)" >&2; exit 1; }
+        live_startup > "$TMPDIR_WORK/live-startup.json"
+        jq -rn \
+            --slurpfile live "$TMPDIR_WORK/live-startup.json" \
+            --slurpfile want "$SETTINGS" \
+            '$live[0] as $l | $want[0] as $w
+             | ((($l | keys) + ($w | keys)) | unique)[]
+             | select($l[.] != $w[.])
+             | "\(.): \($l[.] // "(absent)") -> \($w[.] // "(absent)")"'
+        ;;
+    export)
+        ensure_codec
+        mkdir -p "$(dirname "$SETTINGS")"
+        live_startup > "$SETTINGS.tmp"
+        mv "$SETTINGS.tmp" "$SETTINGS"
+        echo "wrote $SETTINGS" >&2
+        ;;
+    apply)
+        ensure_codec
+        [[ -f "$SETTINGS" ]] || { echo "error: no such file: $SETTINGS (run export first)" >&2; exit 1; }
+        jq -e 'type == "object"' "$SETTINGS" >/dev/null \
+            || { echo "error: $SETTINGS is not a JSON object" >&2; exit 1; }
+
+        decode_full "$TMPDIR_WORK/before.json"
+
+        BACKUP="${DAT%.dat}.bak-$(date +%Y%m%d%H%M%S).dat"
+        cp -p "$DAT" "$BACKUP"
+        echo "backup: $BACKUP" >&2
+
+        # Merge: tracked startup overlay into the live envelope, leaving
+        # version, runtime-global and runtime-per-user byte-identical.
+        jq --slurpfile want "$SETTINGS" '.data.startup = $want[0]' \
+            "$TMPDIR_WORK/before.json" > "$TMPDIR_WORK/merged.json"
+        python3 "$CODEC_PY" "$TMPDIR_WORK/merged.json" "$DAT" 2>/dev/null
+
+        # Verify: startup matches tracked, everything else unchanged.
+        decode_full "$TMPDIR_WORK/after.json"
+        jq -e --slurpfile want "$SETTINGS" '.data.startup == $want[0]' \
+            "$TMPDIR_WORK/after.json" >/dev/null \
+            || { echo "error: verification failed (startup mismatch)" >&2; exit 1; }
+        for section in runtime-global runtime-per-user; do
+            jq -e --arg s "$section" \
+                --slurpfile a "$TMPDIR_WORK/before.json" --slurpfile b "$TMPDIR_WORK/after.json" \
+                -n '$b[0].data[$s] == $a[0].data[$s]' >/dev/null \
+                || { echo "error: verification failed ($section changed)" >&2; exit 1; }
+        done
+        echo "applied $SETTINGS -> $DAT" >&2
+        ;;
+esac
