@@ -73,7 +73,8 @@ if (( DIFF )); then
     # ── map-gen diff (consistent [] notation, per-field) ──────────────────
     DESIRED_GEN=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_jq"'
       ($m[0].autoplace_controls | to_lua) as $ctrl
-      | "local desired=" + $ctrl + "; local m=game.surfaces[\"nauvis\"].map_gen_settings; '"$PRINT_INIT"'; for ctrl, vals in pairs(desired) do local cur=m.autoplace_controls[ctrl]; if not cur then for k,v in pairs(vals) do _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) end else for k,v in pairs(vals) do if cur[k]~=v then _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: \"..tostring(cur[k])..\" -> \"..tostring(v)) end end end end"
+      | (($m[0].property_expression_names // {}) | to_lua) as $props
+      | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local m=game.surfaces[\"nauvis\"].map_gen_settings; '"$PRINT_INIT"'; for ctrl, vals in pairs(desired_ctrl) do local cur=m.autoplace_controls[ctrl]; if not cur then for k,v in pairs(vals) do _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) end else for k,v in pairs(vals) do if cur[k]~=v then _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: \"..tostring(cur[k])..\" -> \"..tostring(v)) end end end end; local live_props=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do if live_props[pname]~=pval then _print(\"map_gen_settings.property_expression_names[\\\"\"..pname..\"\\\"]: \"..tostring(live_props[pname])..\" -> \"..tostring(pval)) end end"
     ')
     echo "/silent-command do $DESIRED_GEN end"
     exit 0
@@ -89,6 +90,7 @@ echo "/silent-command do $DESIRED_MAP end"
 
 DESIRED_GEN=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_jq"'
   ($m[0].autoplace_controls | to_lua) as $ctrl
-  | "local desired=" + $ctrl + "; local m=game.surfaces[\"nauvis\"].map_gen_settings; for ctrl, vals in pairs(desired) do m.autoplace_controls[ctrl]=m.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do m.autoplace_controls[ctrl][k]=v end end; game.surfaces[\"nauvis\"].map_gen_settings=m"
+  | (($m[0].property_expression_names // {}) | to_lua) as $props
+  | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local m=game.surfaces[\"nauvis\"].map_gen_settings; for ctrl, vals in pairs(desired_ctrl) do m.autoplace_controls[ctrl]=m.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do m.autoplace_controls[ctrl][k]=v end end; m.property_expression_names=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do m.property_expression_names[pname]=pval end; game.surfaces[\"nauvis\"].map_gen_settings=m"
 ')
 echo "/silent-command do $DESIRED_GEN end"
