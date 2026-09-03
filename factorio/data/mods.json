@@ -1,0 +1,49 @@
+{
+  "_comment": "Whitelist of mods for Legendary Deathworld, same shape as Factorio's mod-list.json (minus versions). A mod listed with enabled=true is enabled; anything listed false -- or absent entirely -- is written to mod-list.json with enabled=false (default-deny: Factorio would otherwise auto-enable unknown mods on startup). The generated mod-list.json itself is never committed -- regenerate it with tools/sync-mod-list.",
+  "mods": [
+    {
+      "name": "AutoDeconstruct",
+      "enabled": true
+    },
+    {
+      "name": "Better-TrainHorn",
+      "enabled": true
+    },
+    {
+      "name": "EverythingOnNauvis-morganc",
+      "enabled": true
+    },
+    {
+      "name": "RateCalculator",
+      "enabled": true
+    },
+    {
+      "name": "base",
+      "enabled": true
+    },
+    {
+      "name": "custom-spawn-rates",
+      "enabled": true
+    },
+    {
+      "name": "elevated-rails",
+      "enabled": true
+    },
+    {
+      "name": "flib",
+      "enabled": true
+    },
+    {
+      "name": "no-wall-repair",
+      "enabled": true
+    },
+    {
+      "name": "quality",
+      "enabled": true
+    },
+    {
+      "name": "space-age",
+      "enabled": true
+    }
+  ]
+}

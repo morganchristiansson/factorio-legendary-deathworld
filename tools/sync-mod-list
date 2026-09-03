@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+#
+# Generate a default-deny mod-list.json from the committed whitelist.
+#
+# Factorio auto-enables any mod found in the mods directory but missing
+# from mod-list.json (and adds it as enabled on startup), so a
+# hand-maintained mod-list.json silently absorbs mods uploaded for other
+# saves. This script scans the mods directory and writes every discovered
+# mod explicitly: enabled only if listed in factorio/data/mods.json.
+#
+#   tools/sync-mod-list [--mods-dir DIR] [--whitelist PATH] [--out PATH]
+#       Write the generated mod-list.json (backs up the existing one).
+#   tools/sync-mod-list --check [...]
+#       Exit 0 if the target is up to date, 1 with a diff otherwise.
+#       No files are written.
+#
+# The whitelist (repo-local, committed) and the generated mod-list.json
+# (server-local, never committed) are separate files: to change the mod
+# set, edit factorio/data/mods.json and re-run this script.
+#
+# Requires: bash, jq   (see Dockerfile)
+#
+# Env overrides: MODS_DIR, MOD_WHITELIST, MOD_LIST_JSON
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+MODSDIR="${MODS_DIR:-/factorio/mods}"
+WHITELIST="${MOD_WHITELIST:-factorio/data/mods.json}"
+
+usage() {
+    sed -n '2,22p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
+}
+
+OUT=""
+CHECK=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mods-dir) MODSDIR="$2"; shift 2 ;;
+        --whitelist) WHITELIST="$2"; shift 2 ;;
+        --out) OUT="$2"; shift 2 ;;
+        --check) CHECK=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "error: unknown argument: $1 (try --help)" >&2; exit 2 ;;
+    esac
+done
+[[ -z "$OUT" ]] && OUT="$MODSDIR/mod-list.json"
+
+command -v jq >/dev/null || { echo "error: 'jq' not installed" >&2; exit 1; }
+TMPDIR_WORK="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR_WORK"' EXIT
+[[ -d "$MODSDIR" ]] || { echo "error: no such directory: $MODSDIR" >&2; exit 1; }
+[[ -f "$WHITELIST" ]] || { echo "error: no such file: $WHITELIST" >&2; exit 1; }
+jq -e 'type == "object" and (.mods | type == "array")
+    and ([.mods[] | if type == "string" then true elif type == "object" and has("name") then ((.enabled // true) | type == "boolean") else false end] | all)' \
+    "$WHITELIST" >/dev/null \
+    || { echo "error: $WHITELIST must be an object with a mods array of {name, enabled} objects (plain name strings mean enabled)" >&2; exit 1; }
+if ! jq -e '.mods | map(if type == "string" then . else .name end) | index("base")' "$WHITELIST" >/dev/null; then
+    echo "warning: 'base' is not whitelisted; it is force-enabled (Factorio requires it)" >&2
+fi
+
+# ── discover installed mods ──────────────────────────────────────────
+# Zips are name_version.zip (split at the last underscore when the suffix
+# looks like a version); unpacked mods are directories with info.json.
+declare -A SEEN=()
+discover_zip() {
+    local f="${1%.zip}"
+    if [[ "$f" =~ ^(.*)_([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    else
+        printf '%s' "$f"
+    fi
+}
+shopt -s nullglob
+for zip in "$MODSDIR"/*.zip; do
+    SEEN["$(discover_zip "$(basename "$zip")")"]=1
+done
+for dir in "$MODSDIR"/*/; do
+    [[ -f "$dir/info.json" ]] || continue
+    name="$(jq -r '.name // empty' "$dir/info.json" 2>/dev/null || true)"
+    if [[ -z "$name" ]]; then
+        echo "warning: skipping $dir (unreadable info.json)" >&2
+        continue
+    fi
+    SEEN["$name"]=1
+done
+shopt -u nullglob
+(( ${#SEEN[@]} > 0 )) || { echo "error: no mods found in $MODSDIR" >&2; exit 1; }
+
+NAMES_JSON="$(printf '%s\n' "${!SEEN[@]}" | jq -R . | jq -s .)"
+WHITELIST_NAMES_JSON="$(jq '[.mods[] | if type == "string" then . else .name end]' "$WHITELIST")"
+
+# ── merge with whitelist ─────────────────────────────────────────────
+GENERATED="$(jq -n \
+    --argjson names "$NAMES_JSON" \
+    --argjson wnames "$WHITELIST_NAMES_JSON" \
+    --slurpfile wl "$WHITELIST" \
+    '($wl[0].mods | map(if type == "string" then {name: ., enabled: true} elif has("enabled") then . else . + {enabled: true} end)) as $pins
+     | (["base"] + $names + $wnames | unique) as $all
+     | {mods: ([$all[]
+         | . as $name
+         | ($pins | map(select(.name == $name)) | .[0]) as $pin
+         | {name: $name}
+         + (if ($pin.enabled // false) or $name == "base"
+             then {enabled: true} + (if $pin and ($pin | has("version")) then {version: $pin.version} else {} end)
+             else {enabled: false} end)]
+         | sort_by(.name))}')"
+
+# Compare ignoring Factorio-owned version fields: Factorio rewrites them
+# on every startup, so only whitelist pins are significant. Both sides
+# keep a version only for mods pinned in the whitelist.
+normalise() {
+    jq -S --slurpfile wl "$WHITELIST" \
+        '($wl[0].mods | map(if type == "string" then {name: ., enabled: true} elif has("enabled") then . else . + {enabled: true} end)) as $pins
+         | {mods: [.mods[]
+             | .name as $n
+             | ($pins | map(select(.name == $n)) | .[0]) as $pin
+             | {name, enabled}
+             + (if $pin and ($pin | has("version")) then {version: (.version // null)} else {} end)]
+         | sort_by(.name)}' "$1"
+}
+
+if (( CHECK )); then
+    if [[ ! -f "$OUT" ]]; then
+        echo "check: $OUT does not exist" >&2
+        exit 1
+    fi
+    if diff <(normalise "$OUT") <(normalise <(echo "$GENERATED")) > /dev/null; then
+        echo "check: $OUT is up to date (${#SEEN[@]} mods)" >&2
+    else
+        echo "check: $OUT differs from whitelist-generated output:" >&2
+        diff <(normalise "$OUT") <(normalise <(echo "$GENERATED")) || true
+        exit 1
+    fi
+    exit 0
+fi
+
+echo "$GENERATED" | jq '.' > "$TMPDIR_WORK/generated.json"
+if [[ -f "$OUT" ]] \
+    && diff <(normalise "$OUT") <(normalise "$TMPDIR_WORK/generated.json") > /dev/null; then
+    echo "up to date: $OUT (${#SEEN[@]} mods, enable-set unchanged)" >&2
+    exit 0
+fi
+if [[ -f "$OUT" ]]; then
+    BACKUP="${OUT%.json}.bak-$(date +%Y%m%d%H%M%S).json"
+    cp -p "$OUT" "$BACKUP"
+    echo "backup: $BACKUP" >&2
+fi
+echo "$GENERATED" | jq '.' > "$OUT"
+echo "wrote $OUT (${#SEEN[@]} mods)" >&2
