@@ -5,9 +5,9 @@
 # untouched -- only scenario entries are replaced.
 #
 # Usage:
-#   tools/update-lua-in-save.sh <save.zip> [more-saves.zip...]
-#   tools/update-lua-in-save.sh --dry-run <save.zip>
-#   tools/update-lua-in-save.sh --force <save.zip>   # skip running-server guard
+#   tools/sync-save <save.zip> [more-saves.zip...]
+#   tools/sync-save --dry-run <save.zip>
+#   tools/sync-save --force <save.zip>   # skip running-server guard
 #
 # Requires: zip, unzip   (see Dockerfile)
 #

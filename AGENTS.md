@@ -33,7 +33,7 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
 - Dynamic event registrations don't survive save/load; re-register
   conditionally in `.on_load`.
 - The scenario's Lua is embedded in save files. After editing it, redeploy with
-  `tools/update-lua-in-save.sh <save.zip>` (see below) — editing the
+  `tools/sync-save <save.zip>` (see below) — editing the
   scenario folder alone does not update running saves.
 
 ## Runtime environment facts (verified empirically)
@@ -83,8 +83,8 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
 ## Deploying scenario changes to saves
 
 ```sh
-tools/update-lua-in-save.sh --dry-run <save.zip>   # preview
-tools/update-lua-in-save.sh <save.zip>             # apply (+ .bak backup)
+tools/sync-save --dry-run <save.zip>   # preview
+tools/sync-save <save.zip>             # apply (+ .bak backup)
 ```
 
 - Syncs top-level `*.lua`, `description.json`, `locale/en/freeplay.cfg` into
