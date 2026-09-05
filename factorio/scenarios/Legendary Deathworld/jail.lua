@@ -117,6 +117,8 @@ local ensure_gulag_surface = function()
         default_enable_all_autoplace_controls = false,
     })
     surface.always_day = true
+    -- Hide the pit from the map view's surface list.
+    game.forces.player.set_surface_hidden(GULAG_SURFACE_NAME, true)
     surface.request_to_generate_chunks({0, 0}, 9)
     surface.force_generate_chunk_requests()
 
