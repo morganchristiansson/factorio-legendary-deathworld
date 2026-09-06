@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>custom-spawn-rates settings formatter</title>
+<style>
+  body { font-family: monospace; max-width: 900px; margin: 2em auto; padding: 0 1em; }
+  textarea, input[type=text] { width: 100%; box-sizing: border-box; font-family: monospace; }
+  #pretty { height: 22em; }
+  .row { margin: 1em 0; }
+  button { font-family: monospace; margin-right: 0.5em; }
+  #selftest { color: green; }
+  #selftest.fail { color: red; }
+  p.hint { font-family: sans-serif; color: #555; }
+</style>
+</head>
+<body>
+<h1>custom-spawn-rates settings formatter</h1>
+<p class="hint">Box is the single-line value pasted into the mod settings UI.
+Pretty is the grouped human view (<code>#</code> headings, one entry per line).
+Works for spawn and tech settings — both share <code>;</code> entries and <code>name:</code> sections.
+The mod ignores <code>#</code> comments at load, so headings survive the round trip.</p>
+<div class="row">
+  <button id="sample-spawn">Load spawn example</button>
+  <button id="sample-tech">Load tech example</button>
+</div>
+<h2>Box (single line)</h2>
+<input type="text" id="box" spellcheck="false">
+<div class="row">
+  <button id="to-pretty">Box → Pretty</button>
+</div>
+<h2>Pretty (grouped)</h2>
+<textarea id="pretty" spellcheck="false"></textarea>
+<div class="row">
+  <button id="to-box">Pretty → Box</button>
+  <button id="copy-box">Copy box</button>
+  <span id="selftest"></span>
+</div>
+<p class="hint">Pretty → Box drops blank lines, strips trailing <code>,</code>/<code>;</code>
+per line, and joins the rest with <code>"; "</code> — except lines starting
+with <code>{</code>, which rejoin the previous line with <code>","</code>
+(brace groups of one op). <code>#</code> headings are kept — the mod strips
+them. A repeated <code>name:</code> header is never emitted (re-opening a
+section would discard its earlier entries). Headings must not contain
+<code>;</code>.</p>
+<script>
+// Box value -> grouped multiline. Pure string transform: split on ";",
+// "#" comment tokens pass through unindented, blank line before each new
+// "name:" section, continuations indented.
+function splitGroups(body) {
+    return body.replace(/\},\s*\{/g, "},\n{").split("\n");
+}
+
+function toPretty(box) {
+    var out = [];
+    var seenHeader = false;
+    box.split(";").forEach(function (token) {
+        var t = token.replace(/^\s+|\s+$/g, "");
+        if (t === "") return;
+        if (t.charAt(0) === "#") {
+            if (out.length && out[out.length - 1] !== "") out.push("");
+            out.push(t);
+            return;
+        }
+        var m = t.match(/^([\w.\-]+)\s*:(.*)$/);
+        if (m) {
+            if (seenHeader) out.push("");
+            seenHeader = true;
+            var rest = m[2].replace(/^\s+|\s+$/g, "");
+            if (rest === "") {
+                out.push(m[1] + ":");
+                return;
+            }
+            var bits = splitGroups(rest);
+            out.push(m[1] + ": " + bits[0]);
+            for (var i = 1; i < bits.length; i++) out.push("  " + bits[i]);
+        } else {
+            splitGroups(t).forEach(function (ln) { out.push("  " + ln); });
+        }
+    });
+    return out.join("\n");
+}
+
+// Grouped multiline -> single-line box value. Drops blank lines; "#"
+// headings are kept (the mod ignores them at load).
+function toBox(pretty) {
+    var entries = [];
+    pretty.split("\n").forEach(function (line) {
+        var t = line.replace(/^\s+|\s+$/g, "");
+        if (t === "") return;
+        t = t.replace(/[,;]+\s*$/, "");
+        if (t === "") return;
+        if (t.charAt(0) === "{" && entries.length) {
+            entries[entries.length - 1] += "," + t;
+        } else {
+            entries.push(t);
+        }
+    });
+    return entries.join("; ");
+}
+
+var SAMPLE_SPAWN = "biter-spawner: -small-biter; medium-biter 0.2=0.0,0.6=0.4; " +
+    "gleba-spawner-small: -small-wriggler-pentapod";
+var SAMPLE_TECH = "# gated; steel-processing: trigger type=craft-item,item=iron-plate,count=200; " +
+    "automation: count 50; prereq electronics; -prereq automation-science-pack; " +
+    "logistics: prerequisites automation";
+
+function roundTripOk(box) { return toBox(toPretty(box)) === box; }
+
+if (typeof document !== "undefined") {
+    var boxEl = document.getElementById("box");
+    var prettyEl = document.getElementById("pretty");
+    document.getElementById("to-pretty").onclick = function () {
+        prettyEl.value = toPretty(boxEl.value);
+    };
+    document.getElementById("to-box").onclick = function () {
+        boxEl.value = toBox(prettyEl.value);
+    };
+    document.getElementById("copy-box").onclick = function () {
+        boxEl.select();
+        document.execCommand("copy");
+    };
+    document.getElementById("sample-spawn").onclick = function () {
+        boxEl.value = SAMPLE_SPAWN;
+        prettyEl.value = toPretty(SAMPLE_SPAWN);
+    };
+    document.getElementById("sample-tech").onclick = function () {
+        boxEl.value = SAMPLE_TECH;
+        prettyEl.value = toPretty(SAMPLE_TECH);
+    };
+    var ok = roundTripOk(SAMPLE_SPAWN) && roundTripOk(SAMPLE_TECH);
+    var el = document.getElementById("selftest");
+    el.textContent = ok ? "self-test: round-trip OK" : "self-test: FAILED";
+    if (!ok) el.className = "fail";
+}
+</script>
+</body>
+</html>

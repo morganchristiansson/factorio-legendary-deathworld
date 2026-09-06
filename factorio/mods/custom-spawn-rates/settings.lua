@@ -8,6 +8,7 @@
 -- spawners that do not exist or lack result_units.
 
 local SpawnRates = require("lib")
+local Tech = require("tech")
 
 for _, known in ipairs(SpawnRates.KNOWN_SPAWNERS) do
     data:extend({
@@ -26,6 +27,15 @@ for _, known in ipairs(SpawnRates.KNOWN_SPAWNERS) do
 end
 
 data:extend({
+    {
+        type = "string-setting",
+        name = Tech.TECH_SETTING_NAME,
+        localised_name = { "custom-spawn-rates.tech-name" },
+        localised_description = { "custom-spawn-rates.tech-tooltip" },
+        setting_type = "startup",
+        default_value = "",
+        allow_blank = true,
+    },
     {
         type = "string-setting",
         name = SpawnRates.EXTRA_SETTING_NAME,

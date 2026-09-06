@@ -51,6 +51,7 @@ mkdir -p "$PKG"
 cp -a "$SRC_DIR/." "$PKG/"
 rm -rf \
     "$PKG/tests" \
+    "$PKG"/*.html \
     "$PKG"/.git* \
     "$PKG"/*.bak \
     "$PKG"/*.orig \

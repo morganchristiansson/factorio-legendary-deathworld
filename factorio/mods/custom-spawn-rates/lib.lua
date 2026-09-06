@@ -32,12 +32,16 @@ SpawnRates.EXTRA_SETTING_NAME = EXTRA_SETTING_NAME
 -- stage cannot read data.raw, so this list is hardcoded; settings for
 -- absent prototypes are harmless and skipped by data-final-fixes. Any
 -- other (modded) spawner is reachable through EXTRA_SETTING_NAME.
--- 'default' is the setting's default value ("" leaves the nest untouched).
+-- Defaults are blank (nest untouched): a non-blank default naming a
+-- Space Age unit would hard-fail map load on base-only installs, and the
+-- data stage cannot tell a default from an explicit user value.
+-- Gleba nests are 'gleba-spawner' / 'gleba-spawner-small' as of 2.0.77
+-- ('egg-raft' names appear nowhere in the dumped data.raw).
 SpawnRates.KNOWN_SPAWNERS = {
-    { name = "biter-spawner", default = "small-stomper-pentapod 0.35=0.01" },
-    { name = "spitter-spawner", default = "small-strafer-pentapod 0.35=0.01" },
-    { name = "small-egg-raft", default = "" },
-    { name = "egg-raft", default = "" },
+    { name = "biter-spawner", default = "" },
+    { name = "spitter-spawner", default = "" },
+    { name = "gleba-spawner-small", default = "" },
+    { name = "gleba-spawner", default = "" },
 }
 
 -- Parse "0.2=0.00,0.6=0.40" into {{0.2, 0.0}, {0.6, 0.4}}, sorted by evo.
@@ -86,6 +90,9 @@ end
 -- dropped, which reads as "the mod does nothing". Blank value yields
 -- empty map and no orphans.
 function SpawnRates.parse_overrides(value)
+    -- '#' starts a comment (to ';' or end of line); '#' is illegal in
+    -- prototype names and values, so this never eats real input.
+    value = value:gsub("#[^;\n]*", "")
     local overrides = {}
     local orphans = {}
     local current = nil
@@ -96,7 +103,8 @@ function SpawnRates.parse_overrides(value)
             token = token:gsub("^%s*[%w%-%_.]+%s*:%s*", "", 1)
             overrides[current] = ""
         elseif current == nil then
-            orphans[#orphans + 1] = token:match("^%s*(.-)%s*$")
+            local orphan = token:match("^%s*(.-)%s*$")
+            if orphan ~= "" then orphans[#orphans + 1] = orphan end
             token = ""
         end
         if current then
@@ -157,14 +165,17 @@ end
 -- Malformed entries are logged and skipped rather than asserted: bad user
 -- input must not block map loading.
 function SpawnRates.apply_setting(spawner, spawner_name, value)
+    value = value:gsub("#[^;\n]*", "")
     if value:match("^%s*$") then return end
     for entry in value:gmatch("[^;]+") do
-        local mode, second, third = SpawnRates.parse_entry(entry)
-        if not mode then
-            log(SETTING_PREFIX .. 'bad entry "' .. entry .. '" for ' ..
-                spawner_name .. ": " .. tostring(second))
-        else
-            SpawnRates.apply_entry(spawner, spawner_name, mode, second, third)
+        if entry:match("%S") then
+            local mode, second, third = SpawnRates.parse_entry(entry)
+            if not mode then
+                log(SETTING_PREFIX .. 'bad entry "' .. entry .. '" for ' ..
+                    spawner_name .. ": " .. tostring(second))
+            else
+                SpawnRates.apply_entry(spawner, spawner_name, mode, second, third)
+            end
         end
     end
 end
