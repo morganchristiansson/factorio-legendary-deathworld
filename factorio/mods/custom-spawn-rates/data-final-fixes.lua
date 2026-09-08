@@ -10,8 +10,8 @@ local PREFIX = SpawnRates.SETTING_PREFIX
 -- Applies a free-form section setting ("name: <entry>;<entry>") to
 -- prototypes. find(name) returns the prototype or nil; apply(proto, name,
 -- entry_text) performs the change. Unknown names and headerless entries
--- are logged and skipped. Per-op logs inside apply() say what changed, so
--- no echo of the raw value here.
+-- are logged and skipped. Per-op change lines go to the print() report
+-- inside apply(); warnings stay on log(). No echo of the raw value here.
 local function apply_sections(value, noun, header_hint, find, apply)
     local sections, orphans = SpawnRates.parse_overrides(value or "")
     for _, orphan in ipairs(orphans) do

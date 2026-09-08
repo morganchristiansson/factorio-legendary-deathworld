@@ -55,6 +55,11 @@ data = { raw = {} }
 SpawnRates = dofile("lib.lua")
 Tech = require("tech")
 
+-- Capture the print() change report alongside log() warnings so
+-- some_log() sees both channels.
+SpawnRates.report = function(msg) LOG_LINES[#LOG_LINES + 1] = msg end
+Tech.report = function(msg) LOG_LINES[#LOG_LINES + 1] = msg end
+
 function make_spawner(units)
     return { result_units = units or {} }
 end

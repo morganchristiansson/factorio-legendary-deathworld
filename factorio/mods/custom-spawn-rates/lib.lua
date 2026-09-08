@@ -1,6 +1,6 @@
 -- Shared logic for Custom Spawn Rates.
 -- Parses spawn-rate settings and applies them to unit-spawner prototypes.
--- Deliberately free of Factorio API calls except the global log(), so the
+-- Deliberately free of Factorio API calls except log()/print(), so the
 -- test suite (tests/) can exercise it with plain Lua and stubs.
 --
 -- Two kinds of startup settings feed this module:
@@ -27,6 +27,13 @@ local SpawnRates = {}
 
 SpawnRates.SETTING_PREFIX = SETTING_PREFIX
 SpawnRates.EXTRA_SETTING_NAME = EXTRA_SETTING_NAME
+
+-- Change report: plain print(), no prefix. The test harness overrides
+-- this hook to capture the report; warnings and skips stay on log()
+-- with the setting prefix.
+SpawnRates.report = function(msg) print(msg) end
+
+local function report(msg) SpawnRates.report(msg) end
 
 -- Spawners that get their own dedicated startup setting. The settings
 -- stage cannot read data.raw, so this list is hardcoded; settings for
@@ -121,39 +128,56 @@ function SpawnRates.parse_overrides(value)
     return overrides, orphans
 end
 
+-- One-line summary of a rate table for the startup report.
+local function points_to_string(points)
+    local parts = {}
+    for _, p in ipairs(points) do
+        parts[#parts + 1] = p[1] .. "=" .. p[2]
+    end
+    return table.concat(parts, ",")
+end
+
 -- Apply one parsed entry to a spawner's result_units. Invalid unit
 -- references are deliberately left in place: the engine rejects them at
 -- prototype load with a hard error naming the spawner, which surfaces
 -- typos instead of silently dropping entries.
 function SpawnRates.apply_entry(spawner, spawner_name, mode, unit_name, points)
     if mode == "set" then
-        local replaced = false
+        local old = nil
         for _, unit in ipairs(spawner.result_units) do
             if unit[1] == unit_name then
+                old = unit[2]
                 unit[2] = points
-                replaced = true
                 break
             end
         end
-        if replaced then
-            log(SETTING_PREFIX .. 'updated "' .. unit_name .. '" in ' .. spawner_name)
-        else
+        local after = points_to_string(points)
+        if old == nil then
             spawner.result_units[#spawner.result_units + 1] = { unit_name, points }
-            log(SETTING_PREFIX .. 'added "' .. unit_name .. '" to ' .. spawner_name)
+            report('added "' .. unit_name .. '" to ' ..
+                spawner_name .. " (" .. after .. ")")
+        elseif points_to_string(old) == after then
+            report('"' .. unit_name .. '" in ' ..
+                spawner_name .. " already " .. after .. " — no change")
+        else
+            report('updated "' .. unit_name .. '" in ' ..
+                spawner_name .. ": " .. points_to_string(old) ..
+                " → " .. after)
         end
     elseif mode == "remove" then
         local kept = {}
-        local removed = false
+        local old = nil
         for _, unit in ipairs(spawner.result_units) do
             if unit[1] == unit_name then
-                removed = true
+                old = unit[2]
             else
                 kept[#kept + 1] = unit
             end
         end
-        if removed then
+        if old ~= nil then
             spawner.result_units = kept
-            log(SETTING_PREFIX .. 'removed "' .. unit_name .. '" from ' .. spawner_name)
+            report('removed "' .. unit_name .. '" from ' ..
+                spawner_name .. " (was " .. points_to_string(old) .. ")")
         else
             log(SETTING_PREFIX .. '"' .. unit_name .. '" not present in ' ..
                 spawner_name .. " — nothing to remove")

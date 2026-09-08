@@ -39,12 +39,12 @@ CODEC_PY = os.path.join(REPO_ROOT, ".cache", "factorio-data-codec",
 # Values under test: every op family, plus blank-means-untouched.
 SPAWN_BITER = "-small-biter; medium-biter 0.2=0.0,0.6=0.4 # tune"
 TECH_VALUE = ("# e2e tech tweaks\n"
-              "steel-processing: trigger type=craft-item,item=iron-plate,count=200"
-              "; automation: count 50; prereq electronics"
-              "; effect {type=unlock-recipe,recipe=iron-chest},{type=unlock-recipe,recipe=copper-cable}"
-              "; -prereq automation-science-pack,electronics"
+              "steel-processing: research_trigger type=craft-item,item=iron-plate,count=200"
+              "; automation: unit.count 50; +prerequisites electronics"
+              "; +effects {type=unlock-recipe,recipe=iron-chest},{type=unlock-recipe,recipe=copper-cable}"
+              "; -prerequisites automation-science-pack,electronics"
               "; logistics: prerequisites automation"
-              "; -ingredient automation-science-pack")
+              "; -unit.ingredients automation-science-pack")
 
 failures = []
 
@@ -163,7 +163,7 @@ def main():
     check("spawn setting applied in data stage",
           'removed "small-biter" from biter-spawner' in log, log[-2000:])
     check("tech setting applied in data stage",
-          "research trigger set" in log and "count set to 50" in log,
+          "research_trigger set" in log and "count set to 50" in log,
           log[-2000:])
 
     dump = os.path.join(user, "script-output", "data-raw-dump.json")

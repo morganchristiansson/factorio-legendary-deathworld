@@ -41,29 +41,34 @@ One setting (`Custom tech changes`), `tech:` sections with `;`-separated ops.
 Set is `<field> <value>`, remove is `-<field>` — same shape as spawns.
 
 ```
-prerequisites a,b,c    replace prerequisite list (bare `prerequisites` clears)
-prereq x,y             add prerequisites
--prereq x,y            remove prerequisites
-count 300              set unit.count (skipped if tech has no unit)
-time 30                set unit.time (skipped if tech has no unit)
-trigger k=v,k=v,...    set research_trigger, clears unit (needs type=)
--trigger               clear trigger (skipped if tech has no unit)
--ingredient x,y        remove science packs from the cost
- effect k=v,...        append one effect; effect {..},{..} appends several
-# ...                  comments (`#` to `;`/newline) are ignored
+prerequisites a,b,c        replace list (bare `prerequisites` clears)
++prerequisites x,y         add to list
+-prerequisites x,y         remove from list
+unit.count 300             set unit count (skipped if tech has no unit)
+unit.time 30               set unit time (skipped if tech has no unit)
+unit count=500,time=30     set lab cost, creating it when absent, and clear
+                           any trigger (count/time each optional, need one)
+unit.ingredients a=1,b=1   replace the science-pack cost wholesale
+                           (skipped if tech has no unit)
++unit.ingredients a=1      merge packs into the cost (amounts replaced)
+-unit.ingredients x,y      remove science packs from the cost
+research_trigger k=v,...   set research_trigger, clears unit (needs type=)
+-research_trigger          clear trigger (skipped if tech has no unit)
++effects {...},{...}       append effects (braces required for more than one)
+# ...                      comments (`#` to `;`/newline) are ignored
 ```
 
 ```
 biolab: prerequisites biter-egg-handling,kovarex-enrichment-process
-transport-belt-capacity-2: count 300
-heating-tower: -trigger
-steel-processing: trigger type=craft-item,item=iron-plate,count=200
+transport-belt-capacity-2: unit.count 300
+heating-tower: -research_trigger
+steel-processing: research_trigger type=craft-item,item=iron-plate,count=200
 ```
 
 Later entries win. Unknown techs: skipped with log.
 
 Long values can be drafted grouped (one entry per line, `#` headings)
-and collapsed with `settings-formatter.html` in the mod folder (open in a browser,
+and collapsed with `tools/settings-formatter.html` (open in a browser,
 both directions, no dependencies).
 
 ## Notes
@@ -71,20 +76,26 @@ both directions, no dependencies).
 - Unknown unit/prereq names are left in place so the engine fails map load
   naming the typo (`assignID` error). Fix via save-select → Mod settings.
 - Malformed entries are logged and skipped; one bad entry never blocks others.
+- Applied changes print one report line each (`before → after`, no prefix);
+  repeats print `— no change`. Warnings (unknown names, bad entries,
+  skipped ops) stay on `log()` with the `custom-spawn-rates-` prefix.
 - Shipped defaults are blank, so the mod loads on base-only installs
   (a Space Age unit name as default would fail map load there).
-- Setting a trigger clears `unit`; clearing never leaves neither `unit` nor
-  trigger (skipped with log). Trigger-only techs cannot become lab techs via
-  `count`/`time` alone.
+- Setting a trigger clears `unit`, and setting `unit` clears the trigger;
+  clearing never leaves neither `unit` nor trigger (skipped with log).
+  Use the `unit` op (not `count`/`time` alone) to turn a trigger-only
+  tech into a lab tech.
 
 ## Files
 
 | File | Responsibility |
 |---|---|
-| `lib.lua` | Spawn parsing/apply (only `log` from Factorio API) |
-| `tech.lua` | Tech parsing/apply (only `log` from Factorio API) |
+| `lib.lua` | Spawn parsing/apply (only `log`/`print` from Factorio API) |
+| `tech.lua` | Tech parsing/apply (only `log`/`print` from Factorio API) |
 | `settings.lua` | Startup string-settings |
 | `data-final-fixes.lua` | Routes settings to prototypes |
+| `tools/package-mod` | Zip the mod for the portal (`./tools/package-mod`) |
+| `tools/settings-formatter.html` | Draft long setting values grouped, collapse to one line |
 
 ## Tests
 

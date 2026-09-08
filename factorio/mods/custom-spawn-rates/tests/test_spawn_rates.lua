@@ -227,3 +227,27 @@ test("parse_overrides: '#' comments are stripped, not orphaned", function()
     eq(#orphans, 0)
     eq(overrides["biter-spawner"], "-small-biter")
 end)
+
+test("spawn apply: update reports old and new tables, repeat is a no-op", function()
+    local spawners = fresh_world()
+    LOG_LINES = {}
+    SpawnRates.apply_setting(spawners["biter-spawner"], "biter-spawner",
+        "medium-biter 0.2=0.0,0.6=0.4")
+    assert(some_log("updated"),
+        "expected update log, got: " .. table.concat(LOG_LINES, " | "))
+    assert(some_log("→"), "expected before/after arrow")
+    LOG_LINES = {}
+    SpawnRates.apply_setting(spawners["biter-spawner"], "biter-spawner",
+        "medium-biter 0.2=0.0,0.6=0.4")
+    assert(some_log("no change"),
+        "expected no-op log, got: " .. table.concat(LOG_LINES, " | "))
+end)
+
+test("spawn apply: remove reports the dropped table", function()
+    local spawners = fresh_world()
+    LOG_LINES = {}
+    SpawnRates.apply_setting(spawners["biter-spawner"], "biter-spawner",
+        "-small-biter")
+    assert(some_log('removed "small%-biter"'), "expected remove log")
+    assert(some_log("%(was "), "expected old-table note")
+end)
