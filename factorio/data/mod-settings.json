@@ -3,7 +3,7 @@
     "value": ""
   },
   "custom-spawn-rates-biter-spawner": {
-    "value": "small-stomper-pentapod 0.35=0.01"
+    "value": "small-stomper-pentapod 0.35=0.0025,0.6=0.02,0.85=0; medium-stomper-pentapod 0.7=0,0.85=0.03"
   },
   "custom-spawn-rates-gleba-spawner": {
     "value": ""
@@ -15,7 +15,10 @@
     "value": ""
   },
   "custom-spawn-rates-spitter-spawner": {
-    "value": "small-strafer-pentapod 0.35=0.01"
+    "value": "small-strafer-pentapod 0.35=0.0025,0.6=0.02,0.85=0; medium-strafer-pentapod 0.7=0,0.85=0.03"
+  },
+  "custom-spawn-rates-tech": {
+    "value": "# Fulgora; recycling: prerequisites; research_trigger type=mine-entity,entity=scrap; holmium-processing: prerequisites recycling,oil-processing; tesla-weapons: prerequisites electromagnetic-science-pack,military-3; -unit.ingredients space-science-pack,utility-science-pack; # Vulcanus; calcite-processing: prerequisites; +effects {type=unlock-recipe,recipe=oil-refinery},{type=unlock-recipe,recipe=chemical-plant},{type=unlock-recipe,recipe=lubricant}; tungsten-carbide: prerequisites; big-mining-drill: prerequisites foundry,electric-mining-drill,electric-engine; # Gleba; landfill: prerequisites; research_trigger type=mine-entity,entity=stone; steel-processing: prerequisites; research_trigger type=craft-item,item=iron-plate,count=200; agriculture: prerequisites landfill,steel-processing; heating-tower: prerequisites concrete; unit count=500,time=30; unit.ingredients automation-science-pack=1,logistic-science-pack=1; carbon-fiber: prerequisites agricultural-science-pack,logistic-science-pack; -unit.ingredients chemical-science-pack,space-science-pack; toolbelt-equipment: -unit.ingredients space-science-pack; stack-inserter: prerequisites carbon-fiber,production-science-pack,bulk-inserter; -unit.ingredients space-science-pack,utility-science-pack; unit.count 100; advanced-asteroid-processing: prerequisites agricultural-science-pack,space-science-pack; -unit.ingredients utility-science-pack,production-science-pack; transport-belt-capacity-1: -unit.ingredients space-science-pack,utility-science-pack; unit.count 200; transport-belt-capacity-2: -unit.ingredients space-science-pack,utility-science-pack; unit.count 300; rocket-turret: -unit.ingredients chemical-science-pack,space-science-pack"
   },
   "eon-remove-space-platform-restrictions": {
     "value": false
