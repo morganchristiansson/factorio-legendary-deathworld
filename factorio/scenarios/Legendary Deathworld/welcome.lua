@@ -8,24 +8,21 @@ local FRAME_NAME = "ld_welcome_frame"
 local BUTTON_NAME = "ld_welcome_button"
 local CLOSE_NAME = "ld_welcome_close"
 
-local function destroy_frame(player)
+local function close(player)
   local frame = player.gui.screen[FRAME_NAME]
   if frame then
     frame.destroy()
   end
-  -- If our frame was registered as player.opened, release it
-  -- (destroying it usually clears this already, but be explicit)
+  -- Release player.opened only if it is still our frame; anything else
+  -- belongs to another GUI and must be left alone.
   local opened = player.opened
-  if opened and not opened.valid then
-    return -- engine already cleared it
-  end
-  if opened and opened.name == FRAME_NAME then
+  if opened and opened.valid and opened.name == FRAME_NAME then
     player.opened = nil
   end
 end
 
 function Public.show(player)
-  destroy_frame(player)
+  close(player)
 
   local frame = player.gui.screen.add
   {
@@ -68,7 +65,7 @@ end
 
 local function toggle(player)
   if player.gui.screen[FRAME_NAME] then
-    destroy_frame(player)
+    close(player)
   else
     Public.show(player)
   end
@@ -107,7 +104,7 @@ Public.events =
     end
     local player = game.get_player(event.player_index)
     if player and player.valid then
-      destroy_frame(player)
+      close(player)
     end
   end,
 
@@ -119,7 +116,7 @@ Public.events =
     if event.element.name == BUTTON_NAME then
       toggle(player)
     elseif event.element.name == CLOSE_NAME then
-      destroy_frame(player)
+      close(player)
     end
   end
 }
