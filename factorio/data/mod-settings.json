@@ -22,5 +22,11 @@
   },
   "eon-remove-space-platform-restrictions": {
     "value": false
+  },
+  "eon-holmium-ore": {
+    "value": false
+  },
+  "eon-asteroid-chunk-stack-50": {
+    "value": false
   }
 }
