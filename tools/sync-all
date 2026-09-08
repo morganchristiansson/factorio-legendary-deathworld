@@ -5,13 +5,15 @@
 # Runs, in dependency order:
 #   1. tools/sync-mod-list       enabled mod set from factorio/data/mods.json
 #   2. tools/sync-mod-settings apply  startup settings from factorio/data/mod-settings.json
-#   3. tools/sync-save  scenario Lua into the save zip(s)
+#   3. tools/sync-save  scenario Lua into the save(s)
 #
-#   tools/sync-all [--save PATH]... [--dat PATH] [--mods-dir DIR] [--check] [--force]
+#   tools/sync-all [save...] [--check] [--force]
 #
-#   --save PATH   save zip to refresh (repeatable; default: /factorio/saves/legdeath.zip)
-#   --dat PATH    mod-settings.dat to update (default: the sync-mod-settings default)
-#   --mods-dir D  mods directory (default: the sync-mod-list default)
+# Saves are bare names under $FACTORIO_DIR/saves (~/factorio by default);
+# with no save given, the newest save by mtime is used (same as
+# --start-server-load-latest). Anything containing a slash is used as
+# a path verbatim.
+#
 #   --check       dry run: report drift across all three steps, change nothing
 #   --force       run while the Factorio server is up (the scripts also guard;
 #                 updating the save zip under a running server means its next
@@ -20,11 +22,23 @@
 # Requires: bash, jq (plus python3/curl for the mod-settings step)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Live install root (override for local testing): saves live under it.
+FACTDIR="${FACTORIO_DIR:-$HOME/factorio}"
 TMPDIR_WORK="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
 usage() {
-    sed -n '2,20p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
+    sed -n '2,19p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
+}
+
+# Bare save name -> $FACTDIR/saves/<name>.zip; paths pass through.
+resolve_save() {
+    if [[ "$1" == *"/"* ]]; then
+        printf '%s' "$1"
+    else
+        printf '%s/saves/%s' "$FACTDIR" "${1%.zip}.zip"
+    fi
 }
 
 SAVES=()
@@ -32,22 +46,18 @@ CHECK=0
 FORCE=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --save) SAVES+=("$2"); shift 2 ;;
-        --dat) export MOD_SETTINGS_DAT="$2"; shift 2 ;;
-        --mods-dir) export MODS_DIR="$2"; shift 2 ;;
         --check) CHECK=1; shift ;;
         --force|-f) FORCE=1; shift ;;
         -h|--help) usage; exit 0 ;;
-        *) echo "error: unknown argument: $1 (try --help)" >&2; exit 2 ;;
+        -*) echo "error: unknown argument: $1 (try --help)" >&2; exit 2 ;;
+        *) SAVES+=("$(resolve_save "$1")"); shift ;;
     esac
 done
 if (( ${#SAVES[@]} == 0 )); then
-    if [[ -f /factorio/saves/legdeath.zip ]]; then
-        SAVES=(/factorio/saves/legdeath.zip)
-    else
-        echo "error: no --save given and /factorio/saves/legdeath.zip not found" >&2
-        exit 2
-    fi
+    LATEST="$(find "$FACTDIR/saves" -maxdepth 1 -name '*.zip' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2-)"
+    [[ -n "$LATEST" ]] || { echo "error: no saves found in $FACTDIR/saves" >&2; exit 2; }
+    echo "using latest save: $LATEST" >&2
+    SAVES=("$LATEST")
 fi
 
 if pgrep -x factorio >/dev/null 2>&1; then

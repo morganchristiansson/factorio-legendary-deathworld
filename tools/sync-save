@@ -5,9 +5,14 @@
 # untouched -- only scenario entries are replaced.
 #
 # Usage:
-#   tools/sync-save <save.zip> [more-saves.zip...]
-#   tools/sync-save --dry-run <save.zip>
-#   tools/sync-save --force <save.zip>   # skip running-server guard
+#   tools/sync-save <save> [more-saves...]
+#   tools/sync-save --dry-run <save>
+#   tools/sync-save --force <save>   # skip running-server guard
+#
+# Saves are bare names under $FACTORIO_DIR/saves ("legdeath" means
+# $FACTORIO_DIR/saves/legdeath.zip); anything containing a slash is used
+# as a path verbatim. With no save given, the newest save by mtime is
+# used -- the same one --start-server-load-latest would start.
 #
 # Requires: zip, unzip   (see Dockerfile)
 #
@@ -21,20 +26,35 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCENARIO_DIR="$REPO_ROOT/factorio/scenarios/Legendary Deathworld"
 
+# Live install root (override for local testing): saves live under it.
+FACTDIR="${FACTORIO_DIR:-$HOME/factorio}"
+
 DRY_RUN=0
 FORCE=0
 SAVES=()
+
+# Bare save name -> $FACTDIR/saves/<name>.zip; paths pass through.
+resolve_save() {
+  if [[ "$1" == *"/"* ]]; then
+    printf '%s' "$1"
+  else
+    printf '%s/saves/%s' "$FACTDIR" "${1%.zip}.zip"
+  fi
+}
+
 for arg in "$@"; do
   case "$arg" in
     --dry-run|-n) DRY_RUN=1 ;;
     --force|-f) FORCE=1 ;;
     -h|--help) sed '1d' "$0" | grep '^#' | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) SAVES+=("$arg") ;;
+    *) SAVES+=("$(resolve_save "$arg")") ;;
   esac
 done
 if [[ ${#SAVES[@]} -eq 0 ]]; then
-  echo "error: no save file given (try --help)" >&2
-  exit 2
+  LATEST="$(find "$FACTDIR/saves" -maxdepth 1 -name '*.zip' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n1 | cut -d' ' -f2-)"
+  [[ -n "$LATEST" ]] || { echo "error: no saves found in $FACTDIR/saves" >&2; exit 2; }
+  echo "using latest save: $LATEST" >&2
+  SAVES=("$LATEST")
 fi
 
 command -v zip >/dev/null || { echo "error: 'zip' not installed"; exit 1; }

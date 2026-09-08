@@ -4,12 +4,9 @@
 # factorio/data/*.json to the running save.
 #
 # Usage:
-#   tools/apply-map-settings.sh                         # print apply commands (compact)
-#   tools/apply-map-settings.sh --diff                  # print Lua that logs differences instead of applying
-#   tools/apply-map-settings.sh --diff --output print   # same (default)
-#   tools/apply-map-settings.sh --diff --output game.print
-#   tools/apply-map-settings.sh --diff --output game.player.print
-#   tools/apply-map-settings.sh --help
+#   tools/apply-map-settings                # print apply commands (compact)
+#   tools/apply-map-settings --diff         # print Lua that logs differences instead
+#   tools/apply-map-settings --diff --output game.print
 #
 # Notes:
 # * Map/difficulty settings persist inside the save once applied.
@@ -32,10 +29,7 @@ while [[ $# -gt 0 ]]; do
         --game-print) PRINT_FUNC="game.print"; shift ;;
         --player-print) PRINT_FUNC="game.player.print"; shift ;;
         -h|--help) usage; exit 0 ;;
-        --) shift; break ;;
-        -*) echo "error: unknown option: $1 (try --help)" >&2; exit 2 ;;
-        *) # backwards compat: ignore optional REV argument (git integration removed)
-            shift ;;
+        *) echo "error: unknown option: $1 (try --help)" >&2; exit 2 ;;
     esac
 done
 

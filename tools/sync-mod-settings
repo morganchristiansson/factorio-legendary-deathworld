@@ -7,18 +7,14 @@
 # (whitequark/factorio-data-codec, 0BSD) into an untracked runtime cache
 # and drives it with python3 + jq:
 #
-#   tools/sync-mod-settings view [--dat PATH] [--out PATH]
-#       Decode mod-settings.dat and print the startup section as JSON
-#       (stdout, or write to --out).
-#   tools/sync-mod-settings diff [--dat PATH] [--settings PATH]
-#       Show startup settings that differ between the live .dat and the
-#       tracked factorio/data/mod-settings.json.
-#   tools/sync-mod-settings apply [--dat PATH] [--settings PATH]
-#       Merge the tracked startup settings into mod-settings.dat.
-#       Backs up the .dat first and verifies afterwards.
-#   tools/sync-mod-settings export [--dat PATH] [--settings PATH]
-#       Write the live startup section to the tracked JSON file
-#       (pins in-game tweaks for commit).
+#   tools/sync-mod-settings view     print the live startup section as JSON
+#   tools/sync-mod-settings diff     show live-vs-tracked startup differences
+#   tools/sync-mod-settings apply    merge tracked settings into mod-settings.dat
+#   tools/sync-mod-settings export   write the live startup section to the tracked file
+#
+# Tracked file: factorio/data/mod-settings.json. Live file:
+# $FACTORIO_DIR/mods/mod-settings.dat (~/factorio by default; backed up
+# before apply, verified after).
 #
 # Only the "startup" section is tracked: runtime-global and
 # runtime-per-user (per-player UI prefs) change during play and are left
@@ -31,45 +27,38 @@
 # pick up upstream fixes.
 #
 # Requires: bash, curl, jq, python3, sha256sum   (see Dockerfile)
-#
-# Env overrides: MOD_SETTINGS_DAT, MOD_SETTINGS_JSON
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Live install root (override for local testing).
+FACTDIR="${FACTORIO_DIR:-$HOME/factorio}"
 
 CODEC_URL="https://codeberg.org/whitequark/factorio-data-codec/raw/commit/8efae46aef48b6b51b12d855af3406b76336f092/factorio_data.py"
 CODEC_SHA256="2ec54ed12d3d769e1cc014caaa05c5332f26f26c80f4b47ab2cbada3e71946c4"
 CACHE_DIR=".cache/factorio-data-codec"
 CODEC_PY="$CACHE_DIR/factorio_data.py"
 
-DAT="${MOD_SETTINGS_DAT:-/factorio/mods/mod-settings.dat}"
-SETTINGS="${MOD_SETTINGS_JSON:-factorio/data/mod-settings.json}"
+DAT="$FACTDIR/mods/mod-settings.dat"
+SETTINGS="factorio/data/mod-settings.json"
 
 usage() {
-    sed -n '2,32p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
+    sed -n '2,27p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
 }
 
-DAT_OVERRIDE=""
-SETTINGS_OVERRIDE=""
-OUT=""
 CMD=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         view|diff|apply|export) CMD="$1"; shift ;;
-        --dat) DAT_OVERRIDE="$2"; shift 2 ;;
-        --settings) SETTINGS_OVERRIDE="$2"; shift 2 ;;
-        --out) OUT="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "error: unknown argument: $1 (try --help)" >&2; exit 2 ;;
     esac
 done
-[[ -n "$DAT_OVERRIDE" ]] && DAT="$DAT_OVERRIDE"
-[[ -n "$SETTINGS_OVERRIDE" ]] && SETTINGS="$SETTINGS_OVERRIDE"
 [[ -z "$CMD" ]] && { usage >&2; exit 2; }
 
 command -v curl >/dev/null || { echo "error: 'curl' not installed" >&2; exit 1; }
 command -v jq >/dev/null || { echo "error: 'jq' not installed" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "error: 'python3' not installed" >&2; exit 1; }
-[[ -f "$DAT" ]] || { echo "error: no such file: $DAT (override with --dat)" >&2; exit 1; }
+[[ -f "$DAT" ]] || { echo "error: no such file: $DAT" >&2; exit 1; }
 
 # Fetch the codec into the untracked cache dir unless the pinned copy
 # is already there.
@@ -102,12 +91,7 @@ live_startup() {
 case "$CMD" in
     view)
         ensure_codec
-        if [[ -n "$OUT" ]]; then
-            live_startup > "$OUT"
-            echo "wrote $OUT" >&2
-        else
-            live_startup
-        fi
+        live_startup
         ;;
     diff)
         ensure_codec

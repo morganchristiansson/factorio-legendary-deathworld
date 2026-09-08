@@ -8,42 +8,37 @@
 # saves. This script scans the mods directory and writes every discovered
 # mod explicitly: enabled only if listed in factorio/data/mods.json.
 #
-#   tools/sync-mod-list [--mods-dir DIR] [--whitelist PATH] [--out PATH]
-#       Write the generated mod-list.json (backs up the existing one).
-#   tools/sync-mod-list --check [...]
-#       Exit 0 if the target is up to date, 1 with a diff otherwise.
-#       No files are written.
+#   tools/sync-mod-list           write /factorio/mods/mod-list.json (backs up the old one)
+#   tools/sync-mod-list --check   exit 0 if up to date, 1 with a diff otherwise
 #
 # The whitelist (repo-local, committed) and the generated mod-list.json
 # (server-local, never committed) are separate files: to change the mod
 # set, edit factorio/data/mods.json and re-run this script.
 #
 # Requires: bash, jq   (see Dockerfile)
-#
-# Env overrides: MODS_DIR, MOD_WHITELIST, MOD_LIST_JSON
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-MODSDIR="${MODS_DIR:-/factorio/mods}"
-WHITELIST="${MOD_WHITELIST:-factorio/data/mods.json}"
+# Live install root (override for local testing): mods, saves and
+# mod-settings.dat all live under it.
+FACTDIR="${FACTORIO_DIR:-$HOME/factorio}"
+
+MODSDIR="$FACTDIR/mods"
+WHITELIST="factorio/data/mods.json"
+OUT="$MODSDIR/mod-list.json"
 
 usage() {
-    sed -n '2,22p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
+    sed -n '2,17p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
 }
 
-OUT=""
 CHECK=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --mods-dir) MODSDIR="$2"; shift 2 ;;
-        --whitelist) WHITELIST="$2"; shift 2 ;;
-        --out) OUT="$2"; shift 2 ;;
         --check) CHECK=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "error: unknown argument: $1 (try --help)" >&2; exit 2 ;;
     esac
 done
-[[ -z "$OUT" ]] && OUT="$MODSDIR/mod-list.json"
 
 command -v jq >/dev/null || { echo "error: 'jq' not installed" >&2; exit 1; }
 TMPDIR_WORK="$(mktemp -d)"
