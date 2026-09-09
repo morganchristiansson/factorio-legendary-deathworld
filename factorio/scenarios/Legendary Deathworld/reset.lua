@@ -206,19 +206,6 @@ local on_surface_cleared = function(event)
     if game.surfaces["gleba"] ~= nil then
     game.get_pollution_statistics("gleba").clear()
     end
-    if math.random(1,10) == 1 then
-        --pitch black nights
-        game.surfaces[1].daytime_parameters = {dawn = 0.95, dusk = 0.05, evening = 0.15, morning = 0.85}
-        game.surfaces[1].brightness_visual_weights = { 1, 1, 1 }
-        game.surfaces[1].min_brightness = 0
-        game.surfaces[1].daytime = 0.84
-    else
-        --default nights
-        game.surfaces[1].daytime_parameters = {dawn = 0.75, dusk = 0.25, evening = 0.45, morning = 0.55}
-        game.surfaces[1].brightness_visual_weights = { 0, 0, 0 }
-        game.surfaces[1].min_brightness = 0.15
-        game.surfaces[1].daytime = 0.75
-    end
     end
 end
 
@@ -265,7 +252,6 @@ Public.setup_first_round = function(player)
     if not storage.disable_crashsite then
         local surface = player.surface
         Public.setup_starting_area(surface)
-        surface.daytime = 0.7
     end
 end
 

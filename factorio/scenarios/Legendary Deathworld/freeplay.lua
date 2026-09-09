@@ -368,15 +368,6 @@ local on_space_platform_changed_state = function(event)
             storage.victory = true
 		end
 	end
-    -- if event.platform.space_connection ~= nil then
-    --     if event.platform.space_connection.length > 90000 then
-    --         game.surfaces[event.platform.surface.index].daytime = 0.5
-    --         game.surfaces[event.platform.surface.index].brightness_visual_weights = { 1, 1, 1 }
-    --     elseif event.platform.space_connection.length < 90000 then
-    --         game.surfaces[event.platform.surface.index].daytime = 1
-    --         game.surfaces[event.platform.surface.index].brightness_visual_weights = { 0, 0, 0 }
-    --     end
-    -- end
 end
 
 -----------------------------------------------------------------------
