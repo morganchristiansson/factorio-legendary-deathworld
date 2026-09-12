@@ -149,8 +149,23 @@ end
 -----------------------------------------------------------------------
 -- Deaths of the highest-damage spitter in rotation (evolution permitting)
 -- become nesting-spot candidates; modded tiers join automatically.
--- false = no apex yet; forces the first update to register the base filter.
-storage.apex_spitter = false
+-- storage.apex_spitter tracks the filtered unit: nil = asteroids-only baseline,
+-- string = baseline plus that unit. false is a legacy sentinel meaning
+-- "needs (re)registration"; treat it like nil when building the filter.
+local apex_filter = function(name)
+    if name == false then
+        name = nil
+    end
+    local filter = {
+        {filter = "name", name = "huge-metallic-asteroid"},
+        {filter = "name", name = "huge-carbonic-asteroid"},
+        {filter = "name", name = "huge-oxide-asteroid"},
+    }
+    if name ~= nil then
+        filter[#filter + 1] = {filter = "name", name = name}
+    end
+    return filter
+end
 
 local current_apex_spitter = function()
     -- evolution is only readable inside handlers
@@ -178,15 +193,7 @@ end
 local update_apex_spitter = function()
     local name, evo = current_apex_spitter()
     if name == storage.apex_spitter then return end
-    local filter = {
-        {filter = "name", name = "huge-metallic-asteroid"},
-        {filter = "name", name = "huge-carbonic-asteroid"},
-        {filter = "name", name = "huge-oxide-asteroid"},
-    }
-    if name ~= nil then
-        filter[#filter + 1] = {filter = "name", name = name}
-    end
-    script.set_event_filter(defines.events.on_entity_died, filter)
+    script.set_event_filter(defines.events.on_entity_died, apex_filter(name))
     storage.apex_spitter = name
     log(string.format("event=apex-spitter, evolution=%.2f, unit=%s", evo, name or "none"))
     if name ~= nil and game ~= nil then
@@ -194,9 +201,9 @@ local update_apex_spitter = function()
         game.print({"ld-announcement", {"ld-apex-spitter", prototypes.entity[name].localised_name}})
     end
 end
-
-update_apex_spitter()
 -----------------------------------------------------------------------
+-- Handlers register before filters: registering a handler clears its filters,
+-- so the baseline set_event_filter calls below must come after.
 script.on_event(defines.events.on_entity_died,
 function(event)
     if event.entity.type == "asteroid" then
@@ -218,6 +225,9 @@ function(event)
     end
 end
 )
+-- Static baselines re-execute every session; the dynamic apex entry is
+-- re-applied in on_load and recomputed in the minute tick.
+script.set_event_filter(defines.events.on_entity_died, apex_filter(nil))
 -----------------------------------------------------------------------
 script.on_event(defines.events.on_post_entity_died,
 function(event)
@@ -526,9 +536,15 @@ freeplay.on_configuration_changed = function()
     storage.init_ran = #game.players > 0
   end
   init_ending_info()
+  -- Recompute the apex filter from evolution so scenario syncs heal any drift.
+  update_apex_spitter()
 end
 
+-- Dynamic filters/registrations don't survive save/load; re-apply the stored
+-- apex entry so the loaded filters match the saved ones, and re-arm the
+-- protection sweep if anyone is still protected. No game access here by design.
 freeplay.on_load = function()
+  script.set_event_filter(defines.events.on_entity_died, apex_filter(storage.apex_spitter))
     if next(storage.respawn_protection or {}) ~= nil then
         script.on_nth_tick(30, on_respawn_protection_tick)
     end
@@ -538,6 +554,8 @@ freeplay.on_init = function()
   game.allow_tip_activation = true
   storage.created_items = created_items()
   storage.respawn_items = respawn_items()
+  -- Baseline asteroids-only filter is already registered at module scope.
+  storage.apex_spitter = nil
 
   if is_debug() then
     storage.disable_crashsite = true
