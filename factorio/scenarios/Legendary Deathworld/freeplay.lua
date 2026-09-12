@@ -17,6 +17,26 @@ local respawn_items = function()
   }
 end
 
+-- Death respawns grant invulnerability matching the bioflux effect below.
+-- Self-unregistering expiry sweep: each death respawn registers it, it
+-- removes itself once nobody is protected, on_load re-arms it after saves.
+local on_respawn_protection_tick = function()
+    local pending = storage.respawn_protection
+    if pending ~= nil then
+        for player_index, expiry in pairs(pending) do
+            if game.tick >= expiry then
+                pending[player_index] = nil
+                local player = game.get_player(player_index)
+                if player and player.character and player.character.valid then
+                    player.character.destructible = true
+                end
+            end
+        end
+        if next(pending) ~= nil then return end
+    end
+    script.on_nth_tick(30, nil)
+end
+
 -- Common metadata formatting so every log() line parses uniformly:
 -- event=<name>, key=value pairs, comma-separated.
 local format_position = function(position)
@@ -58,6 +78,17 @@ local on_player_respawned = function(event)
         reset.on_first_respawn(player)
     else
         util.insert_safe(player, storage.respawn_items)
+    end
+    -- Death respawns only: joins arrive via on_player_created and skip this.
+    -- Protection lasts exactly as long as the bioflux effect itself: the
+    -- fresh sticker's time_to_live starts at the prototype duration.
+    if player.character and player.character.valid then
+        local sticker = player.surface.create_entity{name = "bioflux-speed-regen-sticker", position = player.position, target = player.character}
+        player.character.destructible = false
+        storage.respawn_protection = storage.respawn_protection or {}
+        storage.respawn_protection[player.index] = game.tick + sticker.time_to_live
+        player.surface.create_entity{name = "bioflux-speed-regen-sticker-behind", position = player.position, target = player.character}
+        script.on_nth_tick(30, on_respawn_protection_tick)
     end
 end
 -----------------------------------------------------------------------
@@ -495,6 +526,12 @@ freeplay.on_configuration_changed = function()
     storage.init_ran = #game.players > 0
   end
   init_ending_info()
+end
+
+freeplay.on_load = function()
+    if next(storage.respawn_protection or {}) ~= nil then
+        script.on_nth_tick(30, on_respawn_protection_tick)
+    end
 end
 
 freeplay.on_init = function()
