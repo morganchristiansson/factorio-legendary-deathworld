@@ -48,7 +48,7 @@ def clean: walk(if type=="object" then with_entries(select(.key | startswith("_"
 
 if (( DIFF )); then
     # ── map-settings diff (compact table + recursive check) ───────────────
-    # difficulty_settings is map-creation only and not writable via LuaMapSettings; skip it
+    # difficulty_settings lives on game.difficulty_settings (writable), not game.map_settings
     if [[ "$PRINT_FUNC" == "game.player.print" ]]; then
         PRINT_INIT='local _print = (game.player and game.player.print) or game.print or print'
     elif [[ "$PRINT_FUNC" == "game.print" ]]; then
@@ -58,9 +58,12 @@ if (( DIFF )); then
     else
         PRINT_INIT="local _print = $PRINT_FUNC"
     fi
+    # One command per file: map-settings.json covers game.map_settings +
+    # game.difficulty_settings (split only because the runtime splits them).
     DESIRED_MAP=$(jq -rn --slurpfile m factorio/data/map-settings.json "$to_lua_jq"'
       ($m[0] | clean | del(.difficulty_settings) | to_lua) as $map
-      | "local desired=" + $map + "; '"$PRINT_INIT"'; local function diff(cur, des, pre) for k,v in pairs(des) do local path=pre.. \".\" ..k; local ok,cv=pcall(function() return cur and cur[k] end); if not ok then _print(path .. \" (unknown, skip) -> \" .. tostring(v)) elseif type(v)==\"table\" then if cv==nil then _print(path .. \": nil -> \" .. tostring(v)) else diff(cv,v,path) end elseif cv~=v then _print(path .. \": \" .. tostring(cv) .. \" -> \" .. tostring(v)) end end end; diff(game.map_settings, desired, \"map_settings\")"
+      | (($m[0].difficulty_settings // {}) | clean | to_lua) as $diff
+      | "local desired_map=" + $map + "; local desired_diff=" + $diff + "; '"$PRINT_INIT"'; local function diff(cur, des, pre) for k,v in pairs(des) do local path=pre.. \".\" ..k; local ok,cv=pcall(function() return cur and cur[k] end); if not ok then _print(path .. \" (unknown, skip) -> \" .. tostring(v)) elseif type(v)==\"table\" then if cv==nil then _print(path .. \": nil -> \" .. tostring(v)) else diff(cv,v,path) end elseif cv~=v then _print(path .. \": \" .. tostring(cv) .. \" -> \" .. tostring(v)) end end end; diff(game.map_settings, desired_map, \"map_settings\"); for k,v in pairs(desired_diff) do local path=\"difficulty_settings.\"..k; local ok,cv=pcall(function() return game.difficulty_settings[k] end); if not ok then _print(path .. \" (unknown, skip) -> \" .. tostring(v)) elseif cv~=v then _print(path .. \": \" .. tostring(cv) .. \" -> \" .. tostring(v)) end end"
     ')
     echo "/silent-command do $DESIRED_MAP end"
 
@@ -76,9 +79,12 @@ fi
 
 # ── normal mode: compact apply via tables ─────────────────────────────────
 
+# One command per file: map-settings.json covers game.map_settings +
+# game.difficulty_settings (split only because the runtime splits them).
 DESIRED_MAP=$(jq -rn --slurpfile m factorio/data/map-settings.json "$to_lua_jq"'
   ($m[0] | clean | del(.difficulty_settings) | to_lua) as $map
-  | "local desired=" + $map + "; local function apply(dst, src) for k,v in pairs(src) do local ok,cur=pcall(function() return dst[k] end); if not ok then else if type(v)==\"table\" and cur~=nil then apply(cur, v) else local ok2,err=pcall(function() dst[k]=v end) end end end end; apply(game.map_settings, desired)"
+  | (($m[0].difficulty_settings // {}) | clean | to_lua) as $diff
+  | "local desired_map=" + $map + "; local desired_diff=" + $diff + "; local function apply(dst, src) for k,v in pairs(src) do local ok,cur=pcall(function() return dst[k] end); if not ok then else if type(v)==\"table\" and cur~=nil then apply(cur, v) else local ok2,err=pcall(function() dst[k]=v end) end end end end; apply(game.map_settings, desired_map); for k,v in pairs(desired_diff) do pcall(function() game.difficulty_settings[k]=v end) end"
 ')
 echo "/silent-command do $DESIRED_MAP end"
 
