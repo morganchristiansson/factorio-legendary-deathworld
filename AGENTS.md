@@ -87,7 +87,7 @@ tools/sync-save --dry-run <save.zip>   # preview
 tools/sync-save <save.zip>             # apply (+ .bak backup)
 ```
 
-- Syncs top-level `*.lua`, `description.json`, `locale/en/freeplay.cfg` into
+- Syncs top-level `*.lua`, `description.json`, `locale/*/freeplay.cfg` into
   existing save zips; new `.lua` modules are picked up automatically.
 - Stop the Factorio server first (the script enforces this; `--force` overrides for local testing).
 - Verify after deploy: fresh join gets crash site + turret + reveal;
