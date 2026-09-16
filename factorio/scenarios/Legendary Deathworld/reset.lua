@@ -8,6 +8,7 @@
 -----------------------------------------------------------------------
 -- Public interface:
 --   Public.setup_starting_area(surf)- reveal + crash site + spawn defences
+-- Reroll vote opens automatically at the end of on_surface_cleared below.
 
 local util = require("util")
 local crash_site = require("crash-site")
@@ -183,6 +184,164 @@ local on_pre_surface_cleared = function(event)
     end
 end
 
+-- Deaths of the highest-damage spitter in rotation (evolution permitting)
+-- become nesting-spot candidates; modded tiers join automatically.
+-- storage.apex_spitter tracks the filtered unit: nil = asteroids-only baseline,
+-- string = baseline plus that unit. false is a legacy sentinel meaning
+-- "needs (re)registration"; treat it like nil when building the filter.
+-- Canonical home for this filter: freeplay requires this module, so both
+-- sides share it without a circular import.
+Public.apex_filter = function(name)
+    if name == false then
+        name = nil
+    end
+    local filter = {
+        {filter = "name", name = "huge-metallic-asteroid"},
+        {filter = "name", name = "huge-carbonic-asteroid"},
+        {filter = "name", name = "huge-oxide-asteroid"},
+    }
+    if name ~= nil then
+        filter[#filter + 1] = {filter = "name", name = name}
+    end
+    return filter
+end
+
+-----------------------------------------------------------------------
+-- Map reroll vote (minimal port of the Biter Battles reroll poll): after
+-- every reset, players get 45 seconds to vote for another map via Yes/No
+-- buttons at the top of the screen with a live tally. Majority rules: a
+-- strict majority of connected players voting Yes (or No) ends the vote at
+-- once, since the outcome is then mathematically decided; otherwise the
+-- timeout tally needs a majority of cast votes. storage.reroll_votes is
+-- nil when no vote is active.
+-----------------------------------------------------------------------
+local REROLL_DURATION = 45
+local REROLL_FRAME = "ld_reroll_frame"
+local REROLL_YES = "ld_reroll_yes"
+local REROLL_NO = "ld_reroll_no"
+local REROLL_CLOSE = "ld_reroll_close"
+
+local reroll_stats = function()
+    local yes, total = 0, 0
+    for _, vote in pairs(storage.reroll_votes or {}) do
+        total = total + 1
+        yes = yes + vote
+    end
+    if total == 0 then return 0, 0, 0 end
+    return math.floor(100 * yes / total), yes, total - yes
+end
+
+local draw_reroll_gui = function(player)
+    if player.gui.top[REROLL_FRAME] then return end
+    local frame = player.gui.top.add{type = "frame", name = REROLL_FRAME}
+    local flow = frame.add{type = "flow", name = "flow", direction = "horizontal"}
+    local caption = flow.add{type = "label", name = "reroll_caption", caption = {"ld-reroll-caption", storage.reroll_time_left}}
+    caption.style.minimal_width = 120
+    caption.style.maximal_width = 120
+    local no_button = flow.add{type = "button", name = REROLL_NO, caption = "No", style = "red_back_button"}
+    no_button.style.minimal_width = 56
+    no_button.style.maximal_width = 56
+    local yes_button = flow.add{type = "button", name = REROLL_YES, caption = "Yes", style = "confirm_button"}
+    yes_button.style.minimal_width = 56
+    yes_button.style.maximal_width = 56
+    if player.admin then
+        local close_button = flow.add{type = "button", name = REROLL_CLOSE, caption = "Close", tooltip = "End the vote now (keeps this map)"}
+        close_button.style.minimal_width = 56
+        close_button.style.maximal_width = 56
+    end
+    local percent, yes_votes, no_votes = reroll_stats()
+    flow.add{type = "label", name = "reroll_stats", caption = {"ld-reroll-stats", no_votes, yes_votes, percent}}
+end
+
+local stop_reroll_vote = function()
+    storage.reroll_votes = nil
+    storage.reroll_time_left = nil
+    for _, player in pairs(game.players) do
+        local frame = player.gui.top[REROLL_FRAME]
+        if frame then frame.destroy() end
+    end
+end
+
+local start_reroll_vote = function()
+    storage.reroll_votes = {}
+    storage.reroll_time_left = REROLL_DURATION
+    game.print({"ld-announcement", {"ld-reroll-start"}})
+    for _, player in pairs(game.connected_players) do
+        draw_reroll_gui(player)
+    end
+end
+
+local pass_reroll_vote = function()
+    local percent = reroll_stats()
+    game.print({"ld-announcement", {"ld-reroll-pass", percent}})
+    stop_reroll_vote()
+    Public.perform_reset(nil)
+end
+
+local fail_reroll_vote = function()
+    local percent = reroll_stats()
+    game.print({"ld-announcement", {"ld-reroll-fail", percent}})
+    stop_reroll_vote()
+end
+
+-- Static per-second driver: no-op without an active vote, so no .on_load
+-- re-arming is needed (module scope re-executes every session).
+local on_reroll_second = function()
+    if not storage.reroll_votes then return end
+    storage.reroll_time_left = storage.reroll_time_left - 1
+    if storage.reroll_time_left > 0 then
+        local percent, yes_votes, no_votes = reroll_stats()
+        for _, player in pairs(game.connected_players) do
+            local frame = player.gui.top[REROLL_FRAME]
+            if frame and frame.valid then
+                frame.flow.reroll_caption.caption = {"ld-reroll-caption", storage.reroll_time_left}
+                frame.flow.reroll_stats.caption = {"ld-reroll-stats", no_votes, yes_votes, percent}
+            end
+        end
+        return
+    end
+    local _, yes_votes, no_votes = reroll_stats()
+    if yes_votes * 2 > yes_votes + no_votes then
+        pass_reroll_vote()
+    else
+        fail_reroll_vote()
+    end
+end
+script.on_nth_tick(60, on_reroll_second)
+
+local on_reroll_click = function(event)
+    if not storage.reroll_votes then return end
+    if not (event.element and event.element.valid) then return end
+    if event.element.name == REROLL_CLOSE then
+        local player = game.get_player(event.player_index)
+        if player and player.valid and player.admin then
+            fail_reroll_vote()
+        end
+        return
+    end
+    if event.element.name ~= REROLL_YES and event.element.name ~= REROLL_NO then return end
+    local player = game.get_player(event.player_index)
+    if not (player and player.valid) then return end
+    storage.reroll_votes[player.name] = (event.element.name == REROLL_YES) and 1 or 0
+    -- A strict majority of connected players either way decides the vote at
+    -- once: the remaining ballots can no longer flip the result.
+    local yes, no = 0, 0
+    for _, vote in pairs(storage.reroll_votes) do
+        if vote == 1 then yes = yes + 1 else no = no + 1 end
+    end
+    if yes * 2 > #game.connected_players then
+        pass_reroll_vote()
+    elseif no * 2 > #game.connected_players then
+        fail_reroll_vote()
+    end
+end
+
+local on_reroll_join = function(event)
+    if not storage.reroll_votes then return end
+    local player = game.get_player(event.player_index)
+    if player and player.valid then draw_reroll_gui(player) end
+end
+
 local on_surface_cleared = function(event)
     if event.surface_index == 1 then
     storage.nesting_spot = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0}}
@@ -192,8 +351,11 @@ local on_surface_cleared = function(event)
     storage.stomper = "behemoth-spitter"
     storage.victory = false
     storage.evo_stage = 0
-    -- force re-detection of the apex spitter as evolution restarts
-    storage.apex_spitter = false
+    -- Evolution restarts: drop the apex entry synchronously so saves stay
+    -- joinable (a sentinel healed by the minute tick would leave a
+    -- poisoned-filter window).
+    storage.apex_spitter = nil
+    script.set_event_filter(defines.events.on_entity_died, Public.apex_filter(nil))
     game.map_settings.enemy_expansion.settler_group_min_size = 8
     game.map_settings.enemy_expansion.settler_group_max_size = 9
     game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 1
@@ -207,6 +369,7 @@ local on_surface_cleared = function(event)
     if game.surfaces["gleba"] ~= nil then
     game.get_pollution_statistics("gleba").clear()
     end
+    start_reroll_vote()
     end
 end
 
@@ -315,6 +478,8 @@ Public.events =
   [defines.events.on_surface_created] = on_surface_created,
   [defines.events.on_pre_surface_cleared] = on_pre_surface_cleared,
   [defines.events.on_surface_cleared] = on_surface_cleared,
+  [defines.events.on_gui_click] = on_reroll_click,
+  [defines.events.on_player_joined_game] = on_reroll_join,
 }
 Public.on_init = ensure_crash_loot
 Public.on_configuration_changed = function() ensure_crash_loot() end

@@ -147,25 +147,9 @@ local on_player_died = function(event)
         cause))
 end
 -----------------------------------------------------------------------
--- Deaths of the highest-damage spitter in rotation (evolution permitting)
--- become nesting-spot candidates; modded tiers join automatically.
--- storage.apex_spitter tracks the filtered unit: nil = asteroids-only baseline,
--- string = baseline plus that unit. false is a legacy sentinel meaning
--- "needs (re)registration"; treat it like nil when building the filter.
-local apex_filter = function(name)
-    if name == false then
-        name = nil
-    end
-    local filter = {
-        {filter = "name", name = "huge-metallic-asteroid"},
-        {filter = "name", name = "huge-carbonic-asteroid"},
-        {filter = "name", name = "huge-oxide-asteroid"},
-    }
-    if name ~= nil then
-        filter[#filter + 1] = {filter = "name", name = name}
-    end
-    return filter
-end
+-- Apex-spitter nesting logic lives here; the filter builder is canonical in
+-- reset.lua (this module already requires it) so saves never desync.
+local apex_filter = reset.apex_filter
 
 local current_apex_spitter = function()
     -- evolution is only readable inside handlers

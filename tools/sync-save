@@ -67,7 +67,7 @@ command -v unzip >/dev/null || { echo "error: 'unzip' not installed"; exit 1; }
 # (e.g. reset.lua) needs no script changes.
 shopt -s nullglob
 cd "$SCENARIO_DIR"
-SYNC_FILES=(*.lua description.json locale/en/freeplay.cfg)
+SYNC_FILES=(*.lua description.json locale/*/freeplay.cfg)
 cd "$REPO_ROOT"
 (( ${#SYNC_FILES[@]} > 2 )) || { echo "error: no .lua files found in $SCENARIO_DIR" >&2; exit 1; }
 
