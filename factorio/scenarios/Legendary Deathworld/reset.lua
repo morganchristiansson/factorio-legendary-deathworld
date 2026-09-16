@@ -15,31 +15,32 @@ local crash_site = require("crash-site")
 local Public = {}
 
 -----------------------------------------------------------------------
-local change_seed = function()
-    local rng = math.random(1111, 4294967295)
+local change_seed = function(seed)
+    seed = seed or math.random(1111, 4294967295)
     local mgs = game.surfaces["nauvis"].map_gen_settings
-    mgs.seed = rng
+    mgs.seed = seed
     game.surfaces["nauvis"].map_gen_settings = mgs
     if game.surfaces["vulcanus"] ~= nil then
     local mgs = game.surfaces["vulcanus"].map_gen_settings
-    mgs.seed = rng
+    mgs.seed = seed
     game.surfaces["vulcanus"].map_gen_settings = mgs
     end
     if game.surfaces["gleba"] ~= nil then
     local mgs = game.surfaces["gleba"].map_gen_settings
-    mgs.seed = rng
+    mgs.seed = seed
     game.surfaces["gleba"].map_gen_settings = mgs
     end
     if game.surfaces["fulgora"] ~= nil then
     local mgs = game.surfaces["fulgora"].map_gen_settings
-    mgs.seed = rng
+    mgs.seed = seed
     game.surfaces["fulgora"].map_gen_settings = mgs
     end
     if game.surfaces["aquilo"] ~= nil then
     local mgs = game.surfaces["aquilo"].map_gen_settings
-    mgs.seed = rng
+    mgs.seed = seed
     game.surfaces["aquilo"].map_gen_settings = mgs
     end
+    return seed
 end
 
 -----------------------------------------------------------------------
@@ -270,16 +271,18 @@ end
 -- Wipes and regenerates all main surfaces with a fresh seed. Called by
 -- control.lua's /reset command (with the acting player) and by freeplay.lua
 -- on defeat conditions.
-Public.perform_reset = function(actor)
-    -- actor: player name for manual /reset runs, nil for automatic resets.
-    -- Manual resets are inferred by the presence of the actor field.
+Public.perform_reset = function(actor, seed)
+    -- actor: player name (or "server" for console) for manual /reset runs,
+    -- nil for automatic resets. Manual resets are inferred by the presence
+    -- of the actor field. seed: optional map seed, random when nil.
+    seed = change_seed(seed)
     local trigger = actor and (", actor=" .. actor) or ""
-    log(string.format("event=map-reset%s, victory=%s, science=%d, minutes=%d",
+    log(string.format("event=map-reset%s, seed=%d, victory=%s, science=%d, minutes=%d",
         trigger,
+        seed,
         tostring(storage.victory),
         game.forces["player"].get_item_production_statistics(1).get_input_count "science",
         math.floor(game.ticks_played / 3600)))
-    change_seed()
     -- We clear the main surfaces instead of deleting them because the seed can't be changed if they are deleted..
     game.surfaces["nauvis"].clear(true)
     if game.surfaces["vulcanus"] ~= nil then

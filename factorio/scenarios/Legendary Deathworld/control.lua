@@ -59,9 +59,29 @@ commands.add_command("free", "Release a player from the gulag. Usage: /free <pla
     end
 end)
 
-commands.add_command("reset", "Resets map", function(command)
-    local player = game.get_player(command.player_index)
-    if player.admin == true then
-        reset.perform_reset(player.name)
+commands.add_command("reset", "Resets map. Usage: /reset [seed]", function(command)
+    local actor = "server"
+    if command.player_index then
+        local player = game.get_player(command.player_index)
+        if not player.admin then
+            player.print("Only admins can use this command.")
+            return
+        end
+        actor = player.name
     end
+    local seed
+    local param = (command.parameter or ""):match("^%s*(.-)%s*$")
+    if param ~= "" then
+        seed = tonumber(param)
+        if not seed or seed % 1 ~= 0 or seed < 0 or seed > 4294967295 then
+            local msg = "Usage: /reset [seed] (seed must be an integer 0-4294967295)"
+            if command.player_index then
+                game.get_player(command.player_index).print(msg)
+            else
+                game.print(msg)
+            end
+            return
+        end
+    end
+    reset.perform_reset(actor, seed)
 end)
