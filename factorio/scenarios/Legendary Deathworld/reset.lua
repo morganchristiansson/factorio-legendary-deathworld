@@ -383,7 +383,6 @@ Public.setup_starting_area = function(surface)
     start_map_reveal(surface)
     create_crash_site(surface)
     place_turret_at_spawn()
-    game.surfaces[1].create_territory{chunks = {{-2,-2},{-1,-2},{0,-2},{1,-2},{-2,-1},{-1,-1},{0,-1},{1,-1},{-2,0},{-1,0},{0,0},{1,0},{-2,1},{-1,1},{0,1},{1,1}}}
 end
 
 local on_surface_created = function(event)
