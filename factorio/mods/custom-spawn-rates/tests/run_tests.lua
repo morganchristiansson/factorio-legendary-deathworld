@@ -10,28 +10,23 @@
 local failures = 0
 local passed = 0
 
+local function eqv(a, b)
+    if a == b then return true end
+    if type(a) ~= "table" or type(b) ~= "table" then return false end
+    for k, v in pairs(a) do
+        if not eqv(v, b[k]) then return false end
+    end
+    for k in pairs(b) do
+        if a[k] == nil then return false end
+    end
+    return true
+end
+
 function eq(actual, expected, message)
-    if type(expected) == "table" then
-        local ok = type(actual) == "table" and #actual == #expected
-        if ok then
-            for i, v in ipairs(expected) do
-                if actual[i][1] ~= v[1] or actual[i][2] ~= v[2] then ok = false break end
-            end
-        end
-        if not ok then error((message or "tables differ") .. ": got " ..
-            serpent_like(actual) .. ", want " .. serpent_like(expected)) end
-    elseif actual ~= expected then
+    if not eqv(actual, expected) then
         error((message or "values differ") .. ": got " .. tostring(actual) ..
             ", want " .. tostring(expected))
     end
-end
-
-function serpent_like(t)
-    local parts = {}
-    for _, v in ipairs(t or {}) do
-        parts[#parts + 1] = "{" .. v[1] .. "," .. v[2] .. "}"
-    end
-    return "{" .. table.concat(parts, ",") .. "}"
 end
 
 function test(name, fn)
@@ -46,19 +41,20 @@ function test(name, fn)
 end
 
 -- ---------------------------------------------------------------------------
--- Stub data stage environment, load the modules under test.
+-- Stub data stage environment, load the single module under test.
 
 log = function(msg) LOG_LINES[#LOG_LINES + 1] = msg end
 LOG_LINES = {}
 data = { raw = {} }
 
-SpawnRates = dofile("lib.lua")
-Tech = require("tech")
+Mod = dofile("lib.lua")
+SpawnRates = Mod.SpawnRates
+Tech = Mod.Tech
 
 -- Capture the print() change report alongside log() warnings so
--- some_log() sees both channels.
-SpawnRates.report = function(msg) LOG_LINES[#LOG_LINES + 1] = msg end
-Tech.report = function(msg) LOG_LINES[#LOG_LINES + 1] = msg end
+-- some_log() sees both channels. (The engine reports through Mod.report;
+-- the surface .report fields are read-only aliases to it.)
+Mod.report = function(msg) LOG_LINES[#LOG_LINES + 1] = msg end
 
 function make_spawner(units)
     return { result_units = units or {} }
@@ -92,6 +88,11 @@ function some_log(pattern)
     end
     return false
 end
+
+local function all_log()
+    return table.concat(LOG_LINES, " | ")
+end
+function all_logs() return table.concat(LOG_LINES, " | ") end
 
 -- ---------------------------------------------------------------------------
 -- Suites.

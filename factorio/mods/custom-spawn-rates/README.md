@@ -3,6 +3,32 @@
 Factorio 2.0 mod: startup settings to tweak enemy spawns and tech tree.
 Applies on map load / startup-setting change. Blank = untouched.
 
+The whole mod is one generic Lua-table manipulator (`lib.lua`): settings text
+is a mini language over real prototype tables, with no per-feature schema.
+Each entry is `[+|-]<path> <value>`:
+
+```
+<path> <value>    set          +<path> <value>   add/merge
+-<path> <value>   remove       -<path>           clear
+```
+
+Paths are lua-style addresses (`unit.count`, `result_units`, `loot`).
+Values are one generic literal grammar — a number, a comma list
+(`a,b,c`), key=value pairs (`type=craft-item,count=200`), or brace groups
+(`{...},{...}`). The engine inspects the live prototype at apply time and
+shapes the value to match the field: a pair list gets k=v pairs, a map field
+gets a map, a scalar field wants a number. Unknown names in values are left
+verbatim so the engine fails map load naming the typo, same as vanilla.
+
+Two shorthands sit on top of the engine:
+
+- **spawns**: a bare unit name means `result_units.<name>` — that's the
+  whole spawn syntax below.
+- **techs**: `ingredients` means `unit.ingredients`, `unit` and
+  `research_trigger` are exclusive (setting one clears the other; clearing
+  one is skipped when it would leave neither), and `unit` merges so setting
+  count/time keeps existing ingredients.
+
 > Settings stage cannot read `data.raw`, so spawners/techs are not
 > enumerated; known nests get dedicated settings, everything else uses
 > free-form section settings.
@@ -14,6 +40,7 @@ Per-nest setting, `;`-separated entries:
 ```
 <unit> <evo=rate,...>   add/override rates
 -<unit>                 remove unit
+-loot  /  -result_units clear the attribute
 ```
 
 Rates are `result_units` shares: interpolate linearly, normalised across
@@ -38,7 +65,6 @@ install): skipped with log.
 ## Tech changes
 
 One setting (`Custom tech changes`), `tech:` sections with `;`-separated ops.
-Set is `<field> <value>`, remove is `-<field>` — same shape as spawns.
 
 ```
 prerequisites a,b,c        replace list (bare `prerequisites` clears)
@@ -47,7 +73,8 @@ prerequisites a,b,c        replace list (bare `prerequisites` clears)
 unit.count 300             set unit count (skipped if tech has no unit)
 unit.time 30               set unit time (skipped if tech has no unit)
 unit count=500,time=30     set lab cost, creating it when absent, and clear
-                           any trigger (count/time each optional, need one)
+                           any trigger (count/time each optional, need one;
+                           existing ingredients are kept)
 unit.ingredients a=1,b=1   replace the science-pack cost wholesale
                            (skipped if tech has no unit)
 +unit.ingredients a=1      merge packs into the cost (amounts replaced)
@@ -65,7 +92,8 @@ heating-tower: -research_trigger
 steel-processing: research_trigger type=craft-item,item=iron-plate,count=200
 ```
 
-Later entries win. Unknown techs: skipped with log.
+Later entries win. Unknown techs: skipped with log; unknown op paths
+(`count`, `time`, `prereq`, ...) are rejected with the supported list.
 
 Long values can be drafted grouped (one entry per line, `#` headings)
 and collapsed with `tools/settings-formatter.html` (open in a browser,
@@ -85,13 +113,15 @@ both directions, no dependencies).
   clearing never leaves neither `unit` nor trigger (skipped with log).
   Use the `unit` op (not `count`/`time` alone) to turn a trigger-only
   tech into a lab tech.
+- Because the engine shapes values from the live prototype, arbitrary
+  prototype paths work for spawners (`-loot`, `-result_units`, ...) and
+  modded tech fields — no registry to extend.
 
 ## Files
 
 | File | Responsibility |
 |---|---|
-| `lib.lua` | Spawn parsing/apply (only `log`/`print` from Factorio API) |
-| `tech.lua` | Tech parsing/apply (only `log`/`print` from Factorio API) |
+| `lib.lua` | The engine + both feature surfaces (parser, ops, reports; only `log`/`print` from Factorio API) |
 | `settings.lua` | Startup string-settings |
 | `data-final-fixes.lua` | Routes settings to prototypes |
 | `tools/package-mod` | Zip the mod for the portal (`./tools/package-mod`) |

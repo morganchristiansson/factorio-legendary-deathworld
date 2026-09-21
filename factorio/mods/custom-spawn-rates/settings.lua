@@ -7,8 +7,9 @@
 -- Settings for absent prototypes are harmless; data-final-fixes skips
 -- spawners that do not exist or lack result_units.
 
-local SpawnRates = require("lib")
-local Tech = require("tech")
+local Mod = require("lib")
+local SpawnRates = Mod.SpawnRates
+local Tech = Mod.Tech
 
 for _, known in ipairs(SpawnRates.KNOWN_SPAWNERS) do
     data:extend({

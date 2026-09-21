@@ -1,19 +1,21 @@
 -- Applies the spawn-rate and tech settings to prototypes. Runs in
 -- data-final-fixes so units/techs added by other mods' updates/final-fixes
--- are already defined.
+-- are already defined. The engine (lib.lua) is a generic table manipulator;
+-- this file only routes settings text to prototype tables.
 
-local SpawnRates = require("lib")
-local Tech = require("tech")
+local Mod = require("lib")
+local SpawnRates = Mod.SpawnRates
+local Tech = Mod.Tech
 
 local PREFIX = SpawnRates.SETTING_PREFIX
 
 -- Applies a free-form section setting ("name: <entry>;<entry>") to
 -- prototypes. find(name) returns the prototype or nil; apply(proto, name,
--- entry_text) performs the change. Unknown names and headerless entries
--- are logged and skipped. Per-op change lines go to the print() report
--- inside apply(); warnings stay on log(). No echo of the raw value here.
+-- entry_text) performs the change. Unknown names and headerless entries are
+-- logged and skipped. Per-op change lines go to the print() report inside
+-- apply(); warnings stay on log().
 local function apply_sections(value, noun, header_hint, find, apply)
-    local sections, orphans = SpawnRates.parse_overrides(value or "")
+    local sections, orphans = SpawnRates.sections(value or "")
     for _, orphan in ipairs(orphans) do
         -- Almost always a missing colon after the section name.
         log(PREFIX .. 'entry "' .. orphan .. '" is outside any "' ..

@@ -161,10 +161,10 @@ def main():
         print(f"tmp dir kept at {tmp}")
         sys.exit(1)
     check("spawn setting applied in data stage",
-          'removed "small-biter" from biter-spawner' in log, log[-2000:])
+          "biter-spawner.result_units.small-biter: removed" in log, log[-2000:])
     check("tech setting applied in data stage",
-          "research_trigger set" in log and "count set to 50" in log,
-          log[-2000:])
+          "steel-processing.research_trigger:" in log
+          and "automation.unit.count:" in log and "→ 50" in log, log[-2000:])
 
     dump = os.path.join(user, "script-output", "data-raw-dump.json")
     check("data-raw-dump.json written", os.path.isfile(dump))
