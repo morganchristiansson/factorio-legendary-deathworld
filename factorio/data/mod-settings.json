@@ -6,13 +6,13 @@
     "value": "small-stomper-pentapod 0.35=0.0001,0.6=0.02,0.85=0; medium-stomper-pentapod 0.7=0,0.85=0.0001"
   },
   "custom-spawn-rates-gleba-spawner": {
-    "value": ""
+    "value": "-loot"
   },
   "custom-spawn-rates-extra": {
     "value": ""
   },
   "custom-spawn-rates-gleba-spawner-small": {
-    "value": ""
+    "value": "-loot"
   },
   "custom-spawn-rates-spitter-spawner": {
     "value": ""

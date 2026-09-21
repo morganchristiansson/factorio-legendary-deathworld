@@ -216,8 +216,21 @@ script.set_event_filter(defines.events.on_entity_died, apex_filter(nil))
 script.on_event(defines.events.on_post_entity_died,
 function(event)
     if event.prototype.type == "unit-spawner" then
-	    game.surfaces[1].create_entity{name = storage.strafer, position = event.position, quality = "legendary"}
-	    game.surfaces[1].create_entity{name = storage.stomper, position = event.position, quality = storage.quality}
+        local pos = game.surfaces[1].find_non_colliding_position(storage.strafer, event.position, 10, 0.5)
+        game.surfaces[1].create_entity{name = storage.strafer, position = pos, quality = "legendary"}
+        pos = game.surfaces[1].find_non_colliding_position(storage.stomper, event.position, 10, 0.5)
+        game.surfaces[1].create_entity{name = storage.stomper, position = pos, quality = storage.quality}
+        if event.prototype.name == "gleba-spawner" then
+            for i = 1, 9 do
+                pos = game.surfaces[1].find_non_colliding_position("item-on-ground", event.position, 0.5, 0.1)
+                game.surfaces[1].create_entity{name = "item-on-ground", position = pos, stack = {name = "pentapod-egg", count = 1}}
+            end
+        elseif event.prototype.name == "gleba-spawner-small" then
+            for i = 1, math.random(1, 3) do
+                pos = game.surfaces[1].find_non_colliding_position("item-on-ground", event.position, 0.5, 0.1)
+                game.surfaces[1].create_entity{name = "item-on-ground", position = pos, stack = {name = "pentapod-egg", count = 1}}
+            end
+        end
     else
         if math.random(1, 10) == 1 then
             game.surfaces[event.surface_index].create_entity{name = "grenade", target = event.position, position = event.position, force = "player", base_damage_modifiers = {damage_modifier = 0.43}}
