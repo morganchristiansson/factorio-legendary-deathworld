@@ -208,14 +208,14 @@ end
 
 -----------------------------------------------------------------------
 -- Map reroll vote (minimal port of the Biter Battles reroll poll): after
--- every reset, players get 45 seconds to vote for another map via Yes/No
+-- every reset, players get 1m30s to vote for another map via Yes/No
 -- buttons at the top of the screen with a live tally. Majority rules: a
 -- strict majority of connected players voting Yes (or No) ends the vote at
 -- once, since the outcome is then mathematically decided; otherwise the
 -- timeout tally needs a majority of cast votes. storage.reroll_votes is
 -- nil when no vote is active.
 -----------------------------------------------------------------------
-local REROLL_DURATION = 45
+local REROLL_DURATION = 90
 local REROLL_FRAME = "ld_reroll_frame"
 local REROLL_YES = "ld_reroll_yes"
 local REROLL_NO = "ld_reroll_no"
