@@ -11,6 +11,8 @@
 # Notes:
 # * Map/difficulty settings persist inside the save once applied.
 # * Map GEN settings only affect chunks generated afterwards -- existing terrain is unchanged.
+# * territory_settings (planet/territory block) are applied to the nauvis surface
+#   from map-gen-settings.json like the other gen settings.
 # * Both modes output ONLY Factorio Lua/commands to stdout (safe to pipe to RCON).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -74,6 +76,13 @@ if (( DIFF )); then
       | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local m=game.surfaces[\"nauvis\"].map_gen_settings; '"$PRINT_INIT"'; for ctrl, vals in pairs(desired_ctrl) do local cur=m.autoplace_controls[ctrl]; if not cur then for k,v in pairs(vals) do _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) end else for k,v in pairs(vals) do if cur[k]~=v then _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: \"..tostring(cur[k])..\" -> \"..tostring(v)) end end end end; local live_props=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do if live_props[pname]~=pval then _print(\"map_gen_settings.property_expression_names[\\\"\"..pname..\"\\\"]: \"..tostring(live_props[pname])..\" -> \"..tostring(pval)) end end"
     ')
     echo "/silent-command do $DESIRED_GEN end"
+
+    # ── territory settings diff (nauvis) ──────────────────────────────────
+    DESIRED_TERR=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_jq"'
+      (($m[0].territory_settings // {}) | clean | to_lua) as $terr
+      | "local desired_terr=" + $terr + "; local m=game.surfaces[\"nauvis\"].map_gen_settings; '"$PRINT_INIT"'; local cur=m.territory_settings; for k,v in pairs(desired_terr) do local cv=cur and cur[k] or nil; if cur==nil then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) elseif type(v)==\"table\" then if type(cv)==\"table\" then if v[1] and #v ~= #cv then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: len \"..#cv..\" -> \"..#v) end elseif cv==nil then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) end elseif cv~=v then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: \"..tostring(cv)..\" -> \"..tostring(v)) end end"
+    ')
+    echo "/silent-command do $DESIRED_TERR end"
     exit 0
 fi
 
@@ -94,3 +103,10 @@ DESIRED_GEN=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_
   | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local m=game.surfaces[\"nauvis\"].map_gen_settings; for ctrl, vals in pairs(desired_ctrl) do m.autoplace_controls[ctrl]=m.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do m.autoplace_controls[ctrl][k]=v end end; m.property_expression_names=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do m.property_expression_names[pname]=pval end; game.surfaces[\"nauvis\"].map_gen_settings=m"
 ')
 echo "/silent-command do $DESIRED_GEN end"
+
+# ── territory settings apply (nauvis) ────────────────────────────────────
+DESIRED_TERR=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_jq"'
+  (($m[0].territory_settings // {}) | clean | to_lua) as $terr
+  | "local desired_terr=" + $terr + "; local m=game.surfaces[\"nauvis\"].map_gen_settings; local cur=m.territory_settings or {}; for k,v in pairs(desired_terr) do cur[k]=v end; m.territory_settings=cur; game.surfaces[\"nauvis\"].map_gen_settings=m"
+')
+echo "/silent-command do $DESIRED_TERR end"
