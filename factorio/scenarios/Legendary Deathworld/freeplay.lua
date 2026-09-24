@@ -17,10 +17,10 @@ local respawn_items = function()
   }
 end
 
--- Death respawns grant invulnerability matching the bioflux effect below.
--- Self-unregistering expiry sweep: each death respawn registers it, it
--- removes itself once nobody is protected, on_load re-arms it after saves.
-local on_respawn_protection_tick = function()
+-- Temporary effects share one self-unregistering expiry sweep: respawn
+-- protection and ping labels register it, and on_load re-arms it after saves.
+local on_temporary_tick = function()
+    local active = false
     local pending = storage.respawn_protection
     if pending ~= nil then
         for player_index, expiry in pairs(pending) do
@@ -32,9 +32,80 @@ local on_respawn_protection_tick = function()
                 end
             end
         end
-        if next(pending) ~= nil then return end
+        active = next(pending) ~= nil
     end
+
+    local pings = storage.pings
+    if pings ~= nil then
+        for index = #pings, 1, -1 do
+            local ping = pings[index]
+            if not ping.label.valid or game.tick >= ping.expiry then
+                if ping.label.valid then
+                    ping.label.destroy()
+                end
+                if ping.messages.valid and #ping.messages.children == 0 then
+                    ping.messages.destroy()
+                end
+                table.remove(pings, index)
+            end
+        end
+        active = active or next(pings) ~= nil
+    end
+
+    if active then return end
     script.on_nth_tick(30, nil)
+end
+
+local ping_player = function(target, message)
+    if not target.character then return end
+
+    target.character.damage(0.001, 'player')
+    target.play_sound{path = 'utility/new_objective', volume_modifier = 1}
+
+    local screen = target.gui.screen
+    local messages = screen.ping_messages
+    if not messages then
+        messages = screen.add{type = 'flow', name = 'ping_messages', direction = 'vertical'}
+        messages.style.width = 400
+        messages.location = {
+            x = target.display_resolution.width / 2 - 200 * target.display_scale,
+            y = 142 * target.display_scale,
+        }
+    end
+
+    local label = messages.add{type = 'label', caption = message}
+    label.style.single_line = false
+    label.style.font = 'default-large-semibold'
+
+    storage.pings = storage.pings or {}
+    table.insert(storage.pings, {
+        label = label,
+        messages = messages,
+        expiry = game.tick + 600,
+    })
+    script.on_nth_tick(30, on_temporary_tick)
+end
+
+local on_console_chat = function(event)
+    if not event.player_index or not event.message then return end
+    local author = game.get_player(event.player_index)
+    if not author then return end
+
+    local names = {}
+    for name in string.gmatch(event.message, '@%s?([a-zA-Z0-9_-]+)') do
+        names[name] = true
+    end
+    for name in string.gmatch(event.message, '([a-zA-Z0-9_-]+)@') do
+        names[name] = true
+    end
+
+    local message = author.name .. ': ' .. event.message
+    for name in pairs(names) do
+        local target = game.get_player(name)
+        if target and target.connected then
+            ping_player(target, message)
+        end
+    end
 end
 
 -- Common metadata formatting so every log() line parses uniformly:
@@ -88,7 +159,7 @@ local on_player_respawned = function(event)
         storage.respawn_protection = storage.respawn_protection or {}
         storage.respawn_protection[player.index] = game.tick + sticker.time_to_live
         player.surface.create_entity{name = "bioflux-speed-regen-sticker-behind", position = player.position, target = player.character}
-        script.on_nth_tick(30, on_respawn_protection_tick)
+        script.on_nth_tick(30, on_temporary_tick)
     end
 end
 -----------------------------------------------------------------------
@@ -521,12 +592,14 @@ freeplay.events =
   [defines.events.on_unit_group_finished_gathering] = on_unit_group_finished_gathering,
   [defines.events.on_biter_base_built] = on_biter_base_built,
   [defines.events.on_space_platform_changed_state] = on_space_platform_changed_state,
-  [defines.events.on_player_flushed_fluid] = on_player_flushed_fluid
+  [defines.events.on_player_flushed_fluid] = on_player_flushed_fluid,
+  [defines.events.on_console_chat] = on_console_chat
 }
 
 freeplay.on_configuration_changed = function()
   storage.created_items = storage.created_items or created_items()
   storage.respawn_items = storage.respawn_items or respawn_items()
+  storage.pings = storage.pings or {}
 
   if not storage.init_ran then
     -- migrating old saves.
@@ -539,18 +612,20 @@ end
 
 -- Dynamic filters/registrations don't survive save/load; re-apply the stored
 -- apex entry so the loaded filters match the saved ones, and re-arm the
--- protection sweep if anyone is still protected. No game access here by design.
+-- temporary-effect sweep if anything is still active. No game access here by design.
 freeplay.on_load = function()
   script.set_event_filter(defines.events.on_entity_died, apex_filter(storage.apex_spitter))
-    if next(storage.respawn_protection or {}) ~= nil then
-        script.on_nth_tick(30, on_respawn_protection_tick)
-    end
+  storage.pings = storage.pings or {}
+  if next(storage.respawn_protection or {}) ~= nil or next(storage.pings) ~= nil then
+    script.on_nth_tick(30, on_temporary_tick)
+  end
 end
 
 freeplay.on_init = function()
   game.allow_tip_activation = true
   storage.created_items = created_items()
   storage.respawn_items = respawn_items()
+  storage.pings = {}
   -- Baseline asteroids-only filter is already registered at module scope.
   storage.apex_spitter = nil
 
