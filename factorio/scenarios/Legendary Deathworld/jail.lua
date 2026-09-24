@@ -45,13 +45,10 @@ local get_gulag_permission_group = function()
     local group = game.permissions.get_group(GULAG_GROUP_NAME)
     if not group then
         group = game.permissions.create_group(GULAG_GROUP_NAME)
-        for _, action_id in pairs(defines.input_action) do
-            group.set_allows_action(action_id, false)
+        for action_name, _ in pairs(defines.input_action) do
+            group.set_allows_action(defines.input_action[action_name], false)
         end
         group.set_allows_action(defines.input_action.write_to_console, true)
-        -- Admin-gated anyway; lets an admin testing their own jail
-        -- undo permission damage from the console.
-        group.set_allows_action(defines.input_action.edit_permission_group, true)
     end
     return group
 end
@@ -193,8 +190,10 @@ Public.jail = function(actor, name, reason)
         actor = actor,
         reason = reason,
     }
-    get_gulag_permission_group().add_player(target.name)
     teleport_to_gulag(target)
+    if target.surface.name == GULAG_SURFACE_NAME then
+        get_gulag_permission_group().add_player(target.name)
+    end
 
     local message = string.format("%s has been jailed by %s. Reason: %s", target.name, actor, reason)
     game.print(message)
@@ -256,6 +255,8 @@ Public.free = function(actor, name)
     end
     return true
 end
+
+Public.on_init = get_gulag_permission_group
 
 -- Respawn hook, routed from freeplay.lua (one handler per event):
 -- jailed players respawn straight back into the pit, without kit.
