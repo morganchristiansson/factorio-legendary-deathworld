@@ -437,14 +437,9 @@ Public.perform_reset = function(actor, seed)
     -- actor: player name (or "server" for console) for manual /reset runs,
     -- nil for automatic resets. Manual resets are inferred by the presence
     -- of the actor field. seed: optional map seed, random when nil.
-    seed = change_seed(seed)
     local trigger = actor and (", actor=" .. actor) or ""
-    log(string.format("event=map-reset%s, seed=%d, victory=%s, science=%d, minutes=%d",
-        trigger,
-        seed,
-        tostring(storage.victory),
-        game.forces["player"].get_item_production_statistics(1).get_input_count "science",
-        math.floor(game.ticks_played / 3600)))
+    local science = game.forces["player"].get_item_production_statistics(1).get_input_count "science"
+    local minutes = math.floor(game.ticks_played / 3600)
     -- We clear the main surfaces instead of deleting them because the seed can't be changed if they are deleted..
     game.surfaces["nauvis"].clear(true)
     if game.surfaces["vulcanus"] ~= nil then
@@ -459,6 +454,14 @@ Public.perform_reset = function(actor, seed)
     if game.surfaces["aquilo"] ~= nil then
     game.surfaces["aquilo"].clear(true)
     end
+    -- Apply the seed after clearing so it is the setting used for the new chunks.
+    seed = change_seed(seed)
+    log(string.format("event=map-reset%s, seed=%d, victory=%s, science=%d, minutes=%d",
+        trigger,
+        seed,
+        tostring(storage.victory),
+        science,
+        minutes))
     -- We delete space platforms
     for _, surface in pairs(game.surfaces) do
         if surface.platform then
