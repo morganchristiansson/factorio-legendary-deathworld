@@ -12,6 +12,7 @@
 
 local util = require("util")
 local crash_site = require("crash-site")
+local trust = require("trust")
 
 local Public = {}
 
@@ -411,6 +412,7 @@ Public.setup_first_round = function(player)
     game.permissions.get_group('Default').set_allows_action(defines.input_action.toggle_map_editor, false)
     game.permissions.get_group('Default').set_allows_action(defines.input_action.change_multiplayer_config, false)
     game.permissions.get_group('Default').set_allows_action(defines.input_action.cheat, false)
+    trust.apply_default_mode()
 
     if not storage.disable_crashsite then
         local surface = player.surface
@@ -434,6 +436,8 @@ end
 -- control.lua's /reset command (with the acting player) and by freeplay.lua
 -- on defeat conditions.
 Public.perform_reset = function(actor, seed)
+    trust.disable_default_spectate()
+
     -- actor: player name (or "server" for console) for manual /reset runs,
     -- nil for automatic resets. Manual resets are inferred by the presence
     -- of the actor field. seed: optional map seed, random when nil.

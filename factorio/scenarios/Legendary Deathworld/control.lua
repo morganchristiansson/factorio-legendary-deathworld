@@ -1,10 +1,12 @@
 local handler = require("event_handler")
 local reset = require("reset")
 local jail = require("jail")
+local trust = require("trust")
 handler.add_lib(require("freeplay"))
 handler.add_lib(require("welcome"))
 handler.add_lib(require("reset"))
 handler.add_lib(require("jail"))
+handler.add_lib(trust)
 
 if script.active_mods["space-age"] then
   handler.add_lib(require("space-finish-script"))
@@ -57,6 +59,62 @@ commands.add_command("free", "Release a player from the gulag. Usage: /free <pla
     if not ok then
         game.print(err)
     end
+end)
+
+commands.add_command("trust", "Allow a player to participate. Usage: /trust <player>", function(command)
+    if command.player_index then
+        local player = game.get_player(command.player_index)
+        if not player.admin then
+            player.print("Only admins can use this command.")
+            return
+        end
+    end
+    local target = (command.parameter or ""):match("^%s*(.-)%s*$")
+    if not target or target == "" then
+        game.print("Usage: /trust <player>")
+        return
+    end
+    local ok, err = trust.trust(target)
+    if not ok then
+        game.print(err)
+    end
+end)
+
+commands.add_command("untrust", "Restrict a player to spectator permissions. Usage: /untrust <player>", function(command)
+    if command.player_index then
+        local player = game.get_player(command.player_index)
+        if not player.admin then
+            player.print("Only admins can use this command.")
+            return
+        end
+    end
+    local target = (command.parameter or ""):match("^%s*(.-)%s*$")
+    if not target or target == "" then
+        game.print("Usage: /untrust <player>")
+        return
+    end
+    local ok, err = trust.untrust(target)
+    if not ok then
+        game.print(err)
+    end
+end)
+
+commands.add_command("spectate-mode", "Enable or disable spectator permissions. Usage: /spectate-mode <on|off>", function(command)
+    if command.player_index then
+        local player = game.get_player(command.player_index)
+        if not player.admin then
+            player.print("Only admins can use this command.")
+            return
+        end
+    end
+    local mode = (command.parameter or ""):lower():match("^%s*(.-)%s*$")
+    if mode ~= "on" and mode ~= "off" then
+        game.print("Usage: /spectate-mode <on|off>")
+        return
+    end
+    local enabled = mode == "on"
+    trust.set_default_spectate(enabled)
+    game.print("Default spectator mode is now " .. (enabled and "on" or "off") .. ".")
 end)
 
 commands.add_command("reset", "Resets map. Usage: /reset [seed]", function(command)

@@ -615,8 +615,7 @@ end
 -- temporary-effect sweep if anything is still active. No game access here by design.
 freeplay.on_load = function()
   script.set_event_filter(defines.events.on_entity_died, apex_filter(storage.apex_spitter))
-  storage.pings = storage.pings or {}
-  if next(storage.respawn_protection or {}) ~= nil or next(storage.pings) ~= nil then
+  if next(storage.respawn_protection or {}) ~= nil or next(storage.pings or {}) ~= nil then
     script.on_nth_tick(30, on_temporary_tick)
   end
 end
