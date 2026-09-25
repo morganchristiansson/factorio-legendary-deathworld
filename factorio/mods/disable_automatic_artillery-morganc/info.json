@@ -1,0 +1,12 @@
+{
+    "name": "disable_automatic_artillery-morganc",
+    "version": "0.0.3",
+    "title": "Disable Automatic Artillery",
+    "author": "morganc",
+    "dependencies": [
+        "base >= 2.0.0"
+    ],
+    "description": "Adds settings to toggle automatic artillery firing for artillery turrets and wagons.",
+    "factorio_version": "2.0",
+    "homepage": ""
+}
