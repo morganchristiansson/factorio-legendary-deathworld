@@ -8,6 +8,15 @@ handler.add_lib(require("reset"))
 handler.add_lib(require("jail"))
 handler.add_lib(trust)
 
+-- Command feedback goes only to the caller; the console keeps seeing it.
+local function reply(command, message)
+    if command.player_index then
+        game.get_player(command.player_index).print(message)
+    else
+        game.print(message)
+    end
+end
+
 if script.active_mods["space-age"] then
   handler.add_lib(require("space-finish-script"))
 else
@@ -31,12 +40,12 @@ commands.add_command("jail", "Send a player to the gulag. Usage: /jail <player> 
     local target = table.remove(params, 1)
     local reason = table.concat(params, " ")
     if not target or reason == "" then
-        game.print("Usage: /jail <player> <reason>")
+        reply(command, "Usage: /jail <player> <reason>")
         return
     end
     local ok, err = jail.jail(actor, target, reason)
     if not ok then
-        game.print(err)
+        reply(command, err)
     end
 end)
 
@@ -52,12 +61,12 @@ commands.add_command("free", "Release a player from the gulag. Usage: /free <pla
     end
     local target = command.parameter
     if not target or target == "" then
-        game.print("Usage: /free <player>")
+        reply(command, "Usage: /free <player>")
         return
     end
     local ok, err = jail.free(actor, target)
     if not ok then
-        game.print(err)
+        reply(command, err)
     end
 end)
 
@@ -71,12 +80,12 @@ commands.add_command("trust", "Allow a player to participate. Usage: /trust <pla
     end
     local target = (command.parameter or ""):match("^%s*(.-)%s*$")
     if not target or target == "" then
-        game.print("Usage: /trust <player>")
+        reply(command, "Usage: /trust <player>")
         return
     end
     local ok, err = trust.trust(target)
     if not ok then
-        game.print(err)
+        reply(command, err)
     end
 end)
 
@@ -90,12 +99,12 @@ commands.add_command("untrust", "Restrict a player to spectator permissions. Usa
     end
     local target = (command.parameter or ""):match("^%s*(.-)%s*$")
     if not target or target == "" then
-        game.print("Usage: /untrust <player>")
+        reply(command, "Usage: /untrust <player>")
         return
     end
     local ok, err = trust.untrust(target)
     if not ok then
-        game.print(err)
+        reply(command, err)
     end
 end)
 
@@ -109,7 +118,7 @@ commands.add_command("spectate-mode", "Enable or disable spectator permissions. 
     end
     local mode = (command.parameter or ""):lower():match("^%s*(.-)%s*$")
     if mode ~= "on" and mode ~= "off" then
-        game.print("Usage: /spectate-mode <on|off>")
+        reply(command, "Usage: /spectate-mode <on|off>")
         return
     end
     local enabled = mode == "on"
@@ -132,12 +141,7 @@ commands.add_command("reset", "Resets map. Usage: /reset [seed]", function(comma
     if param ~= "" then
         seed = tonumber(param)
         if not seed or seed % 1 ~= 0 or seed < 0 or seed > 4294967295 then
-            local msg = "Usage: /reset [seed] (seed must be an integer 0-4294967295)"
-            if command.player_index then
-                game.get_player(command.player_index).print(msg)
-            else
-                game.print(msg)
-            end
+            reply(command, "Usage: /reset [seed] (seed must be an integer 0-4294967295)")
             return
         end
     end

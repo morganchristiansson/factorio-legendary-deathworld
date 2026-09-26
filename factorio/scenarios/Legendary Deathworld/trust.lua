@@ -27,7 +27,6 @@ local ALLOWED_ACTIONS = {
     "set_filter",
     "set_player_color",
     "spectator_change_surface",
-    "start_walking",
     "toggle_show_entity_info",
     "write_to_console",
 }
@@ -101,10 +100,6 @@ local function set_default_spectate(enabled)
         restore_default_permissions()
     end
     log("event=default-spectate, enabled=" .. tostring(enabled))
-end
-
-Public.apply_default_mode = function()
-    set_default_spectate(true)
 end
 
 Public.set_default_spectate = function(enabled)

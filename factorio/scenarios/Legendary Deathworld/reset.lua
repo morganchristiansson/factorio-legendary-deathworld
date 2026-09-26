@@ -412,7 +412,7 @@ Public.setup_first_round = function(player)
     game.permissions.get_group('Default').set_allows_action(defines.input_action.toggle_map_editor, false)
     game.permissions.get_group('Default').set_allows_action(defines.input_action.change_multiplayer_config, false)
     game.permissions.get_group('Default').set_allows_action(defines.input_action.cheat, false)
-    trust.apply_default_mode()
+    trust.set_default_spectate(true)
 
     if not storage.disable_crashsite then
         local surface = player.surface

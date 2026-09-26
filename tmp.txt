@@ -1,0 +1,49 @@
+TODO
+
+- [x] Start factorio from CLI into LDW with map settings
+- [ ] Fix vulcano border in Aquilo biome or nauvis-aquilo. Too much ice. Looks messy.
+- [?] Some demo territory is still off.
+- [x] Demo variety is still not random enough.
+- [x] Highest volcano frequency is not high enough
+- [ ] Often not enough volcanoes with tungsten
+- [-] Fix lava shape, less splatter
+- [x] Cliffs are different with actual LDW map gen settings
+- [x] Gleba lake were missing!
+- [?] seed 620294650 and seed=330659763 seed=3178401646 seed=51240919 has volcano with no territory
+- [x] scrap can occupy same space as ores and calcite
+- [x] make scrap have fulgora shape again
+- [x] make depression at center of volcano to cause outwards facing cliffs to form a ridge
+
+packettools:
+- Also online_time is lazyily computed and could be moved from PlayerAttrs to PlayerDb and persisted.
+
+
+
+
+We have nauvis decoratives such as green-hairy-grass and green-carpet-grass all over gleba territory, only near gleba-volcano boundary.
+
+This seems to happened when we added feathering/faded overlap of decorative at biome boundaries.
+But they are appearing deep south in gleba territory.
+They should be masked, they are not native Gleba.
+
+Also related issue, Nauvis trees are appearingin gleba masked territory at gleba-volcano boundary.
+
+
+
+6. factorio_sniffer.rb duplicate detect_local_ipv4 vs ServerDetect.local_ipv4; search only internal. Yes FactorioSniffer#detect_local_ipv4 duplicates ServerDetect.local_ipv4 exactly-ish (reject loopback, uniq but no default route ordering). It should delegate. 8 lines. Also default_capture_dir, capture_path, retention_hint, effective_keep, effective_max_size, ensure_pcap_writer maybe small but cohesive.
+
+7. format_action_data 294 lines? Actually 700-1000 ~300 lines. Could use ActionData formatter class? But that adds abstraction, against ponytail. Not.
+
+8. HiveMindAgent 1200 lines. Split modules but still huge. Could identify duplicated methods across modules:
+- persist! in hivemind_persistence and maybe persist!? Search.
+
+
+
+
+-----------
+
+ Build a runtime Lua mirror that answers one question for each generated chunk:
+
+ │ Which EoN volcano cone owns this chunk, and what is that cone’s effective width?
+
+ The result is used to construct territories with surface.create_territory.
