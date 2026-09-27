@@ -190,6 +190,8 @@ Public.jail = function(actor, name, reason)
         actor = actor,
         reason = reason,
     }
+    -- Biter Battles order (utils/datastore/jail_data.lua): teleport first,
+    -- then gate the group on the player being on the pit surface.
     teleport_to_gulag(target)
     if target.surface.name == GULAG_SURFACE_NAME then
         get_gulag_permission_group().add_player(target.name)
@@ -199,8 +201,16 @@ Public.jail = function(actor, name, reason)
     game.print(message)
     target.clear_console()
     target.print(message)
-    log(string.format("event=jail, actor=%s, target=%s, reason=%s, source_group=%s",
-        actor, target.name, reason, source_group and source_group.name or "none"))
+    -- Observability only: bb silently skips the group when the guard above
+    -- fails, so report what the engine actually applied.
+    local actual_group = target.permission_group and target.permission_group.name or "none"
+    log(string.format("event=jail, actor=%s, target=%s, reason=%s, source_group=%s, actual_group=%s, surface=%s, admin=%s",
+        actor, target.name, reason, source_group and source_group.name or "none", actual_group,
+        target.surface.name, tostring(target.admin)))
+    if actual_group ~= GULAG_GROUP_NAME then
+        game.print(string.format("[jail] WARNING: %s should be in group '%s' but engine reports '%s'",
+            target.name, GULAG_GROUP_NAME, actual_group))
+    end
     return true
 end
 
