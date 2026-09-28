@@ -577,14 +577,7 @@ Public.setup_first_round = function(player)
     storage.init_ran = true
 
     game.forces["enemy"].friendly_fire = false
-    game.permissions.get_group('Default').set_allows_action(defines.input_action.add_permission_group, false)
-    game.permissions.get_group('Default').set_allows_action(defines.input_action.delete_permission_group, false)
-    game.permissions.get_group('Default').set_allows_action(defines.input_action.edit_permission_group, false)
-    game.permissions.get_group('Default').set_allows_action(defines.input_action.import_permissions_string, false)
-    game.permissions.get_group('Default').set_allows_action(defines.input_action.map_editor_action, false)
-    game.permissions.get_group('Default').set_allows_action(defines.input_action.toggle_map_editor, false)
-    game.permissions.get_group('Default').set_allows_action(defines.input_action.change_multiplayer_config, false)
-    game.permissions.get_group('Default').set_allows_action(defines.input_action.cheat, false)
+    trust.restrict_default()
     trust.set_default_spectate(true)
 
     if not storage.disable_crashsite then

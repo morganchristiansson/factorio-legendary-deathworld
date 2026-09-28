@@ -72,6 +72,7 @@ local function restore_default_permissions()
         local action = defines.input_action[action_name]
         default.set_allows_action(action, trusted.allows_action(action))
     end
+    Public.restrict_default()
 end
 
 local function get_target(name)
@@ -91,6 +92,27 @@ local function set_group(player, group)
     end
     group.add_player(player.name)
     return true
+end
+
+-- Actions Default never gets, whoever restores it: without this the restore
+-- below hands out cheat and the map editor along with everything else.
+local ALWAYS_DENIED = {
+    "add_permission_group",
+    "delete_permission_group",
+    "edit_permission_group",
+    "import_permissions_string",
+    "map_editor_action",
+    "toggle_map_editor",
+    "change_multiplayer_config",
+    "cheat",
+}
+
+-- Idempotent: safe to call after every Default change.
+Public.restrict_default = function()
+    local default = get_default_group()
+    for _, action_name in ipairs(ALWAYS_DENIED) do
+        default.set_allows_action(defines.input_action[action_name], false)
+    end
 end
 
 local function set_default_spectate(enabled)
