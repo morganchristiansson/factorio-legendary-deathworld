@@ -88,11 +88,21 @@ local function get_target(name)
     return player
 end
 
+local function enqueue_permission_op(op)
+    storage.permission_ops = storage.permission_ops or {}
+    table.insert(storage.permission_ops, op)
+    log("event=permission-request, op=" .. (op.spectate ~= nil and "spectate" or "group")
+        .. ", value=" .. tostring(op.spectate ~= nil and op.spectate or op.group)
+        .. ", target=" .. tostring(op.player or "Default"))
+end
+
 local function set_group(player, group)
     if player.permission_group == group then
         return false, player.name .. " is already in that permission group"
     end
-    group.add_player(player.name)
+    -- Deferred, see apply_permission_ops: a direct add here is rolled back
+    -- when the command came from a player's client.
+    enqueue_permission_op({group = group.name, player = player.name})
     return true
 end
 
@@ -117,7 +127,7 @@ Public.restrict_default = function()
     end
 end
 
-local function set_default_spectate(enabled)
+local function apply_default_spectate(enabled)
     if enabled then
         get_trusted_group()
         set_spectator_permissions()
@@ -127,8 +137,39 @@ local function set_default_spectate(enabled)
     log("event=default-spectate, enabled=" .. tostring(enabled))
 end
 
+-----------------------------------------------------------------------
+-- Permission changes made while a command from a player's client is being
+-- processed are rolled back by the engine. Two independent sightings, same
+-- signature -- the call returns, the log says it worked, nothing changed:
+--   /spectate-mode on  -> event=default-spectate enabled=true, Default left
+--                          at its previous 271/279
+--   /jail from another admin -> event=jail actual_group=server right after a
+--                          successful add_player
+-- The console path sticks, and so does a tick, which is why the gulag is
+-- enforced from jail.lua's tick. So nothing here mutates permissions
+-- directly: requests are queued and applied one tick later by the driver.
+local apply_permission_ops = function()
+    local ops = storage.permission_ops
+    if not ops or #ops == 0 then return end
+    storage.permission_ops = {}
+    for _, op in ipairs(ops) do
+        if op.spectate ~= nil then
+            apply_default_spectate(op.spectate)
+        else
+            local group = game.permissions.get_group(op.group)
+            local player = game.get_player(op.player)
+            if group and player and player.valid then
+                group.add_player(player.name)
+                log(string.format("event=permission-applied, op=group, target=%s, group=%s, actual=%s",
+                    player.name, op.group, player.permission_group and player.permission_group.name or "none"))
+            end
+        end
+    end
+end
+script.on_nth_tick(1, apply_permission_ops)
+
 Public.set_default_spectate = function(enabled)
-    set_default_spectate(enabled)
+    enqueue_permission_op({spectate = enabled and true or false})
 end
 
 -- Same check as disable_default_spectate, exposed for the join message.
@@ -138,7 +179,7 @@ end
 
 Public.disable_default_spectate = function()
     if Public.is_spectate_on() then
-        set_default_spectate(false)
+        enqueue_permission_op({spectate = false})
     end
 end
 
