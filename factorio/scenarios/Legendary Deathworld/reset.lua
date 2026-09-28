@@ -335,7 +335,6 @@ local on_reroll_second = function()
         fail_reroll_vote()
     end
 end
-script.on_nth_tick(60, on_reroll_second)
 
 -----------------------------------------------------------------------
 -- Loss: the enemy nest lands on the spawn point. Instead of resetting
@@ -473,8 +472,14 @@ local on_defeat_second = function()
 end
 
 -- Static per-second driver (module scope re-executes every session, so no
--- .on_load re-arming); no-op unless a loss is pending.
-script.on_nth_tick(60, on_defeat_second)
+-- .on_load re-arming); no-op unless a loss is pending. The reroll vote shares
+-- it: one handler per tick count, so a second script.on_nth_tick(60, ...) here
+-- would replace this one and freeze the vote instead.
+local on_periodic_second = function()
+    on_reroll_second()
+    on_defeat_second()
+end
+script.on_nth_tick(60, on_periodic_second)
 -----------------------------------------------------------------------
 local on_reroll_click = function(event)
     if not storage.reroll_votes then return end
