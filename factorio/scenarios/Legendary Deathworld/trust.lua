@@ -26,7 +26,6 @@ local ALLOWED_ACTIONS = {
     "remote_view_surface",
     "set_filter",
     "set_player_color",
-    "spectator_change_surface",
     "toggle_show_entity_info",
     "write_to_console",
 }
@@ -55,6 +54,9 @@ local function get_trusted_group()
     return group
 end
 
+-- Permissions only, no controller switch: start_walking is absent, so
+-- spectator mode also freezes the character, and nothing here lets a player
+-- toggle themselves into a ghost (spectator_change_surface stays denied).
 local function set_spectator_permissions()
     local default = get_default_group()
     for action_name in pairs(defines.input_action) do

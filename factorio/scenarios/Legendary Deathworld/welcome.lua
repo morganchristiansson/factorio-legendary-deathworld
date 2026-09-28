@@ -95,7 +95,7 @@ Public.events =
       return
     end
     ensure_button(player)
-    -- Spectator mode leaves Default unable to build, craft or open
+    -- Spectator mode leaves Default unable to walk, build, craft or open
     -- anything; say so, or a joiner just reads it as a broken game.
     if trust.is_spectate_on() then
       player.print{"ld-spectate-mode"}
