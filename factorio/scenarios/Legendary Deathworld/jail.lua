@@ -8,6 +8,16 @@
 -----------------------------------------------------------------------
 local GULAG_SURFACE_NAME = "gulag"
 local GULAG_GROUP_NAME = "gulag"
+-- A group change issued inside a command raised by another player's client is
+-- silently reverted by the engine: the pit teleport lands but the prisoner
+-- keeps their old, unrestricted group (event=jail logged actual_group=server
+-- right after add_player returned). Biter Battles never sees this because its
+-- /jail always comes from the console, where the change sticks. Re-asserting
+-- from a tick -- where the console's own changes do stick -- makes the gulag
+-- self-healing instead of one-shot.
+local ENFORCE_INTERVAL = 20
+-- How long a release keeps re-asserting the restored group.
+local RELEASE_GRACE = 600
 -- Floor and wall bounds of the pit itself.
 local PIT = {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}}
 
@@ -34,6 +44,11 @@ local SONG_POSITION = {x = 17, y = 0}
 local get_jailed_table = function()
     storage.jailed = storage.jailed or {}
     return storage.jailed
+end
+
+local get_releasing_table = function()
+    storage.releasing = storage.releasing or {}
+    return storage.releasing
 end
 
 Public.is_jailed = function(name)
@@ -196,6 +211,8 @@ Public.jail = function(actor, name, reason)
     -- prisoner walking around the pit with full permissions. The log line
     -- below reports what the engine actually applied.
     get_gulag_permission_group().add_player(target.name)
+    storage.releasing = storage.releasing or {}
+    storage.releasing[target.name] = nil
     teleport_to_gulag(target)
 
     local message = string.format("%s has been jailed by %s. Reason: %s", target.name, actor, reason)
@@ -212,6 +229,10 @@ Public.jail = function(actor, name, reason)
         actor, target.name, reason, source_group and source_group.name or "none", actual_group,
         target.surface.name, tostring(target.admin)))
     if actual_group ~= GULAG_GROUP_NAME then
+        -- Log it as well as printing: the in-game console is not readable
+        -- after the fact, and this is the only signal the group was dropped.
+        log(string.format("event=jail-warning, actor=%s, target=%s, expected=%s, actual=%s, surface=%s",
+            actor, target.name, GULAG_GROUP_NAME, actual_group, target.surface.name))
         game.print(string.format("[jail] WARNING: %s should be in group '%s' but engine reports '%s'",
             target.name, GULAG_GROUP_NAME, actual_group))
     end
@@ -248,6 +269,10 @@ Public.free = function(actor, name)
     if gulag_group then
         gulag_group.remove_player(target.name)
     end
+    -- Same engine flakiness as jail(), in reverse: if that add is swallowed
+    -- the released player is stuck in the deny-all group with no way out, so
+    -- the enforcement tick below keeps re-asserting it for a while.
+    storage.releasing[name] = {group = restored_group.name, expires = game.tick + RELEASE_GRACE}
     local actual_group = target.permission_group and target.permission_group.name or "none"
 
     local surface = game.surfaces[data.surface_index] or game.surfaces[1]
@@ -264,11 +289,48 @@ Public.free = function(actor, name)
     log(string.format("event=release, actor=%s, target=%s, restored_group=%s, actual_group=%s",
         actor, name, restored_group.name, actual_group))
     if actual_group ~= restored_group.name then
+        log(string.format("event=release-warning, actor=%s, target=%s, expected=%s, actual=%s",
+            actor, name, restored_group.name, actual_group))
         game.print(string.format("[jail] WARNING: %s should be in group '%s' but engine reports '%s'",
             name, restored_group.name, actual_group))
     end
     return true
 end
+
+-----------------------------------------------------------------------
+-- Keeps the gulag honest every ENFORCE_INTERVAL ticks: the prisoner stays
+-- in the deny-all group and on the pit surface, and a release whose group
+-- change was swallowed is re-asserted until RELEASE_GRACE expires. Static
+-- registration (module scope re-executes every session), no-op when the
+-- gulag is empty.
+local enforce_jail_state = function()
+    local group = get_gulag_permission_group()
+    local gulag = game.surfaces[GULAG_SURFACE_NAME]
+    for name in pairs(get_jailed_table()) do
+        local player = game.get_player(name)
+        if player and player.valid then
+            if not player.permission_group or player.permission_group.name ~= GULAG_GROUP_NAME then
+                group.add_player(name)
+            end
+            if gulag and player.surface.index ~= gulag.index then
+                teleport_to_gulag(player)
+            end
+        end
+    end
+    for name, pending in pairs(get_releasing_table()) do
+        if game.tick >= pending.expires then
+            storage.releasing[name] = nil
+        else
+            local player = game.get_player(name)
+            local restored = game.permissions.get_group(pending.group)
+            if player and player.valid and restored
+                and (not player.permission_group or player.permission_group.name ~= pending.group) then
+                restored.add_player(name)
+            end
+        end
+    end
+end
+script.on_nth_tick(ENFORCE_INTERVAL, enforce_jail_state)
 
 Public.on_init = get_gulag_permission_group
 
