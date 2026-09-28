@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lua5.4 \
     python3 \
     python3-pip \
+    python3-rcon \
     ddgr pandoc \
     && rm -rf /var/lib/apt/lists/*
 
