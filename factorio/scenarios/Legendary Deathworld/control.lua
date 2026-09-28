@@ -126,6 +126,24 @@ commands.add_command("spectate-mode", "Enable or disable spectator permissions. 
     game.print("Default spectator mode is now " .. (enabled and "on" or "off") .. ".")
 end)
 
+commands.add_command("defeat", "Test the loss sequence without waiting for biters. Plants a nest on spawn, freezes the enemy, shows the cutscene, resets in 1m. Usage: /defeat", function(command)
+    if command.player_index then
+        local player = game.get_player(command.player_index)
+        if not player.admin then
+            player.print("Only admins can use this command.")
+            return
+        end
+    end
+    -- A biter nest is spawners plus worm turrets; more than three buildings in
+    -- the box is what counts as a loss. Then hand the spawner to the real
+    -- trigger, so the test runs the same path the game does.
+    local nest = game.surfaces[1].create_entity{name = "biter-spawner", position = {x = 0, y = 0}, force = "enemy"}
+    for _, building in ipairs({{"biter-spawner", -12, 4}, {"biter-spawner", 10, -8}, {"small-worm-turret", -6, -12}}) do
+        game.surfaces[1].create_entity{name = building[1], position = {x = building[2], y = building[3]}, force = "enemy"}
+    end
+    reset.on_biter_base_built{entity = nest, surface_index = 1}
+end)
+
 commands.add_command("reset", "Resets map. Usage: /reset [seed]", function(command)
     local actor = "server"
     if command.player_index then

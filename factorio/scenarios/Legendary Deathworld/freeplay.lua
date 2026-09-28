@@ -392,18 +392,6 @@ local on_unit_group_finished_gathering = function(event)
 	end
 end
 -----------------------------------------------------------------------
-local on_biter_base_built = function(event)
-	local x = event.entity.position.x
-	local y = event.entity.position.y
-	if (x > -34 and x < 34 and y > -34 and y < 34) then
-		game.print({"ld-announcement", {"ld-defeat-imminent"}})
-		local nest_count = game.surfaces[1].count_entities_filtered{area={left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}},type={"turret","unit-spawner"}}
-		if nest_count > 3 or game.ticks_played < 36000 then
-			reset.perform_reset()
-		end
-	end
-end
------------------------------------------------------------------------
 -- Evolution stages: applied and announced once, when the threshold is first
 -- crossed; texts come from locale/en/freeplay.cfg (ld-evo-milestone-*)
 local evo_stages = {
@@ -590,7 +578,6 @@ freeplay.events =
   [defines.events.on_chunk_generated] = on_chunk_generated,
   [defines.events.on_research_finished] = on_research_finished,
   [defines.events.on_unit_group_finished_gathering] = on_unit_group_finished_gathering,
-  [defines.events.on_biter_base_built] = on_biter_base_built,
   [defines.events.on_space_platform_changed_state] = on_space_platform_changed_state,
   [defines.events.on_player_flushed_fluid] = on_player_flushed_fluid,
   [defines.events.on_console_chat] = on_console_chat

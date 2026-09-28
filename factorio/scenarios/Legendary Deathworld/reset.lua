@@ -12,6 +12,7 @@
 
 local util = require("util")
 local crash_site = require("crash-site")
+local jail = require("jail")
 local trust = require("trust")
 
 local Public = {}
@@ -222,6 +223,32 @@ local REROLL_YES = "ld_reroll_yes"
 local REROLL_NO = "ld_reroll_no"
 local REROLL_CLOSE = "ld_reroll_close"
 
+-- Loss countdown: same top-of-screen frame as the reroll vote, no buttons.
+-- Drawn and ticked by the defeat sequence further down.
+local DEFEAT_FRAME = "ld_defeat_frame"
+
+local update_defeat_countdown = function(seconds)
+    for _, player in pairs(game.connected_players) do
+        if not player.gui.top[DEFEAT_FRAME] then
+            local frame = player.gui.top.add{type = "frame", name = DEFEAT_FRAME}
+            local flow = frame.add{type = "flow", name = "flow", direction = "horizontal"}
+            local caption = flow.add{type = "label", name = "defeat_caption", caption = {"ld-defeat-in", seconds}}
+            caption.style.minimal_width = 120
+            caption.style.maximal_width = 120
+            caption.style.font = "heading-2"
+            caption.style.font_color = {r = 0.88, g = 0.55, b = 0.11}
+        end
+        player.gui.top[DEFEAT_FRAME].flow.defeat_caption.caption = {"ld-defeat-in", seconds}
+    end
+end
+
+local stop_defeat_countdown = function()
+    for _, player in pairs(game.players) do
+        local frame = player.gui.top[DEFEAT_FRAME]
+        if frame then frame.destroy() end
+    end
+end
+
 local reroll_stats = function()
     local yes, total = 0, 0
     for _, vote in pairs(storage.reroll_votes or {}) do
@@ -310,6 +337,140 @@ local on_reroll_second = function()
 end
 script.on_nth_tick(60, on_reroll_second)
 
+-----------------------------------------------------------------------
+-- Loss: the enemy nest lands on the spawn point. Instead of resetting
+-- mid-tick we stop the fight (entities show "disabled by script", the same
+-- lever Biter Battles pulls on a lost match), cut everyone to a flyover of
+-- the nest (shaped like the crash-site intro everyone knows, aimed at what
+-- they actually built), and reset DEFEAT_COUNTDOWN seconds later.
+local DEFEAT_COUNTDOWN = 60
+local SPAWN_BOX = {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}}
+
+-- Entity "type" is the only generic axis in EntitySearchFilters, and this
+-- build splits it: turrets are "ammo-turret"/"electric-turret"/
+-- "fluid-turret"/"artillery-turret"/"turret", and the worm enemies are
+-- "unit"/"spider-unit"/"segmented-unit"/"unit-spawner". There is no single
+-- generic turret type and no prototypes.turret here, so both families are
+-- derived from the prototypes.
+local TURRET_TYPES, ENEMY_TYPES = {}, {}
+for _, prototype in pairs(prototypes.entity) do
+    if prototype.type:find("turret") then
+        TURRET_TYPES[#TURRET_TYPES + 1] = prototype.type
+    elseif prototype.type:find("unit") then
+        ENEMY_TYPES[#ENEMY_TYPES + 1] = prototype.type
+    end
+end
+
+local FREEZE_FILTERS = {
+    -- The swarm and its nests stop producing, every turret stops shooting:
+    -- the nest's own worm turrets are what kills the base during the pause,
+    -- and a stray player turret can shoot the nest apart.
+    {type = ENEMY_TYPES, force = "enemy"},
+    {type = TURRET_TYPES},
+}
+
+local freeze_all = function()
+    local matched = 0
+    for _, filter in ipairs(FREEZE_FILTERS) do
+        local entities = game.surfaces[1].find_entities_filtered(filter)
+        matched = matched + #entities
+        for _, entity in pairs(entities) do
+            entity.disabled_by_script = true
+        end
+    end
+    return matched
+end
+
+local watch_spawn_cutscene = function(nest)
+    -- Crash-site intro, retargeted: pan onto every nest they planted, end on
+    -- a wide shot of all of them. Worm turrets are skipped -- the nests are
+    -- what triggers the loss. No start_position: the engine starts each
+    -- cutscene at that player's own position, so everyone pans in from
+    -- wherever they happen to be standing.
+    local waypoints = {}
+    local center = {x = 0, y = 0}
+    for _, entity in pairs(nest) do
+        if entity.type == "unit-spawner" then
+            local position = entity.position
+            center.x = center.x + position.x
+            center.y = center.y + position.y
+            waypoints[#waypoints + 1] = {position = {x = position.x, y = position.y}, zoom = 2, transition_time = 90, time_to_wait = 90}
+        end
+    end
+    if #waypoints > 0 then
+        center.x, center.y = center.x / #waypoints, center.y / #waypoints
+    end
+    waypoints[#waypoints + 1] = {position = center, zoom = 0.5, transition_time = 150, time_to_wait = 0}
+    for _, player in pairs(game.connected_players) do
+        if player.character and player.character.valid and not jail.is_jailed(player.name) then
+            player.set_controller{type = defines.controllers.cutscene, start_zoom = 2, waypoints = waypoints}
+            -- Same hint vanilla shows on the crash-site cutscene; TAB exits.
+            player.gui.screen.add{type = "label", caption = {"skip-cutscene"}, name = "ld_skip_hint"}
+        end
+    end
+end
+
+local exit_cutscene = function(player)
+    if player and player.valid and player.controller_type == defines.controllers.cutscene then
+        player.exit_cutscene()
+    end
+end
+
+-- TAB, then out of the cutscene. The input itself is base data
+-- (crash-site-skip-cutscene, enabled_while_in_cutscene), vanilla just
+-- registers a handler.
+local on_skip_cutscene = function(event)
+    exit_cutscene(game.get_player(event.player_index))
+end
+
+local on_cutscene_end = function(event)
+    local player = game.get_player(event.player_index)
+    local hint = player and player.valid and player.gui.screen["ld_skip_hint"]
+    if hint then hint.destroy() end
+end
+
+-- Shared by the trigger below and control.lua's /defeat test command, which
+-- hands it a synthetic event so the test runs the real path.
+Public.on_biter_base_built = function(event)
+    local position = event.entity.position
+    if (position.x > -34 and position.x < 34 and position.y > -34 and position.y < 34) then
+        game.print({"ld-announcement", {"ld-defeat-imminent"}})
+        local nest = game.surfaces[1].find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
+        if #nest <= 3 and game.ticks_played >= 36000 then return end
+        -- Both widgets live at the top of the screen, and a loss can land
+        -- while a reroll vote is still open. The vote is moot: the countdown
+        -- ends in a reset, which opens a fresh one.
+        stop_reroll_vote()
+        -- Frozen here rather than on a timer: one pass at the loss, and one
+        -- more if another nest lands while the countdown runs.
+        local matched = freeze_all()
+        if storage.defeat_at then return end
+        storage.defeat_at = game.tick + DEFEAT_COUNTDOWN * 60
+        log(string.format("event=defeat, position=%.1f,%.1f, seconds=%d, disabled=%d", position.x, position.y, DEFEAT_COUNTDOWN, matched))
+        watch_spawn_cutscene(nest)
+        update_defeat_countdown(DEFEAT_COUNTDOWN)
+    end
+end
+
+local on_defeat_second = function()
+    if not storage.defeat_at then return end
+    storage.defeat_at = storage.defeat_at - 60
+    if storage.defeat_at > 0 then
+        update_defeat_countdown(math.floor(storage.defeat_at / 60))
+        return
+    end
+    storage.defeat_at = nil
+    -- Cutscene still running when the map goes: hand control back first.
+    for _, player in pairs(game.connected_players) do
+        exit_cutscene(player)
+    end
+    Public.perform_reset()
+end
+
+-- Static per-second driver (module scope re-executes every session, so no
+-- .on_load re-arming); no-op unless a loss is pending.
+script.on_nth_tick(60, on_defeat_second)
+-----------------------------------------------------------------------
 local on_reroll_click = function(event)
     if not storage.reroll_votes then return end
     if not (event.element and event.element.valid) then return end
@@ -352,6 +513,7 @@ local on_surface_cleared = function(event)
     storage.stomper = "behemoth-spitter"
     storage.victory = false
     storage.evo_stage = 0
+    storage.defeat_at = nil
     -- Evolution restarts: drop the apex entry synchronously so saves stay
     -- joinable (a sentinel healed by the minute tick would leave a
     -- poisoned-filter window).
@@ -370,6 +532,7 @@ local on_surface_cleared = function(event)
     if game.surfaces["gleba"] ~= nil then
     game.get_pollution_statistics("gleba").clear()
     end
+    stop_defeat_countdown()
     start_reroll_vote()
     end
 end
@@ -484,6 +647,10 @@ Public.events =
   [defines.events.on_surface_created] = on_surface_created,
   [defines.events.on_pre_surface_cleared] = on_pre_surface_cleared,
   [defines.events.on_surface_cleared] = on_surface_cleared,
+  [defines.events.on_biter_base_built] = Public.on_biter_base_built,
+  ["crash-site-skip-cutscene"] = on_skip_cutscene,
+  [defines.events.on_cutscene_finished] = on_cutscene_end,
+  [defines.events.on_cutscene_cancelled] = on_cutscene_end,
   [defines.events.on_gui_click] = on_reroll_click,
   [defines.events.on_player_joined_game] = on_reroll_join,
 }
