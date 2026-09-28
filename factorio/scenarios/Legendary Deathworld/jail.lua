@@ -318,13 +318,17 @@ local enforce_jail_state = function()
         end
     end
     for name, pending in pairs(get_releasing_table()) do
-        if game.tick >= pending.expires then
+        local player = game.get_player(name)
+        -- The entry exists only to cover a swallowed add, so drop it as soon
+        -- as the group actually stuck: otherwise a /trust in the grace window
+        -- would be undone by this tick.
+        local applied = player and player.valid and player.permission_group
+            and player.permission_group.name == pending.group
+        if applied or game.tick >= pending.expires then
             storage.releasing[name] = nil
         else
-            local player = game.get_player(name)
             local restored = game.permissions.get_group(pending.group)
-            if player and player.valid and restored
-                and (not player.permission_group or player.permission_group.name ~= pending.group) then
+            if player and player.valid and restored then
                 restored.add_player(name)
             end
         end
