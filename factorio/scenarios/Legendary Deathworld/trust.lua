@@ -132,10 +132,6 @@ Public.untrust = function(name)
     if not player then
         return false, err
     end
-    if player.admin then
-        return false, "Admins cannot be demoted to spectator"
-    end
-
     local ok, change_err = set_group(player, get_default_group())
     if not ok then
         return false, change_err
