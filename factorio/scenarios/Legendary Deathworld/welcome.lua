@@ -2,6 +2,8 @@
 -- with a top bar button to bring it back up at any time.
 -- (Similar to the map intro in the Biter Battles scenario.)
 
+local trust = require("trust")
+
 local Public = {}
 
 local FRAME_NAME = "ld_welcome_frame"
@@ -93,6 +95,11 @@ Public.events =
       return
     end
     ensure_button(player)
+    -- Spectator mode leaves Default unable to build, craft or open
+    -- anything; say so, or a joiner just reads it as a broken game.
+    if trust.is_spectate_on() then
+      player.print{"ld-spectate-mode"}
+    end
     Public.show(player)
   end,
 

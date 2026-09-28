@@ -106,8 +106,13 @@ Public.set_default_spectate = function(enabled)
     set_default_spectate(enabled)
 end
 
+-- Same check as disable_default_spectate, exposed for the join message.
+Public.is_spectate_on = function()
+    return not get_default_group().allows_action(defines.input_action.open_gui)
+end
+
 Public.disable_default_spectate = function()
-    if not get_default_group().allows_action(defines.input_action.open_gui) then
+    if Public.is_spectate_on() then
         set_default_spectate(false)
     end
 end
