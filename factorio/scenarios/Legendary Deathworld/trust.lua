@@ -35,21 +35,22 @@ local function get_default_group()
     return game.permissions.get_group("Default")
 end
 
+-- The trusted group is the baseline "Default is not spectating" permissions,
+-- so it must not be derived from Default's current state: a snapshot taken
+-- while spectate mode was on captured the stripped set, and restoring from it
+-- left Default deny-all with no way back (the group lives in the save, so the
+-- bad snapshot outlived restarts). Full permissions are the baseline instead;
+-- /trust is admin-only, so granting them is the admin's explicit choice.
 local function get_trusted_group()
     local group = game.permissions.get_group(TRUSTED_GROUP_NAME)
-    if group then
-        return group
-    end
-
-    group = game.permissions.create_group(TRUSTED_GROUP_NAME)
     if not group then
-        error("Could not create trusted permission group")
+        group = game.permissions.create_group(TRUSTED_GROUP_NAME)
+        if not group then
+            error("Could not create trusted permission group")
+        end
     end
-
-    local default = get_default_group()
     for action_name in pairs(defines.input_action) do
-        local action = defines.input_action[action_name]
-        group.set_allows_action(action, default.allows_action(action))
+        group.set_allows_action(defines.input_action[action_name], true)
     end
     return group
 end
