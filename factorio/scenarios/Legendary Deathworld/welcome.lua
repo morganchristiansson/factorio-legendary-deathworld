@@ -99,6 +99,7 @@ Public.events =
     -- anything; say so, or a joiner just reads it as a broken game.
     if trust.is_spectate_on() then
       player.print{"ld-spectate-mode"}
+      log("event=spectate-notice, target=" .. player.name)
     end
     Public.show(player)
   end,
