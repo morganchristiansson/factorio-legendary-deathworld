@@ -190,19 +190,23 @@ Public.jail = function(actor, name, reason)
         actor = actor,
         reason = reason,
     }
-    -- Biter Battles order (utils/datastore/jail_data.lua): teleport first,
-    -- then gate the group on the player being on the pit surface.
+    -- Group first, teleport second, and never gate the group on the
+    -- teleport having landed: LuaPlayer.surface still reports the old
+    -- surface for a tick, which silently skipped the group and left the
+    -- prisoner walking around the pit with full permissions. The log line
+    -- below reports what the engine actually applied.
+    get_gulag_permission_group().add_player(target.name)
     teleport_to_gulag(target)
-    if target.surface.name == GULAG_SURFACE_NAME then
-        get_gulag_permission_group().add_player(target.name)
-    end
 
     local message = string.format("%s has been jailed by %s. Reason: %s", target.name, actor, reason)
     game.print(message)
     target.clear_console()
     target.print(message)
-    -- Observability only: bb silently skips the group when the guard above
-    -- fails, so report what the engine actually applied.
+    -- Observability only: report what the engine actually applied, so a
+    -- silent add_player failure shows up in the log instead of as a
+    -- prisoner who can still build. Same-tick read-back, so it can lag the
+    -- real membership by a tick (jail.lua:207 logged actual_group=Default
+    -- right after a successful add) -- treat it as a hint, not a verdict.
     local actual_group = target.permission_group and target.permission_group.name or "none"
     log(string.format("event=jail, actor=%s, target=%s, reason=%s, source_group=%s, actual_group=%s, surface=%s, admin=%s",
         actor, target.name, reason, source_group and source_group.name or "none", actual_group,
