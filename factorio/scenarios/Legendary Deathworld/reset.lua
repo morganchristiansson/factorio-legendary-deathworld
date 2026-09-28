@@ -664,12 +664,6 @@ Public.on_configuration_changed = function() ensure_crash_loot() end
 -- Re-register the tick handler after a save/load if a reveal was in flight,
 -- since dynamic event registrations don't survive loading.
 Public.on_load = function()
-    -- A countdown left on screen by an earlier build (or a load mid-loss)
-    -- would sit there showing a stale number: the counter that owns it is
-    -- gone, so nothing ever updates it.
-    stop_defeat_countdown()
-    -- Pre-fix saves carry an absolute tick here; nothing reads it any more.
-    storage.defeat_at = nil
     if storage.reveal_index then
         script.on_event(defines.events.on_tick, on_tick_reveal)
     end
