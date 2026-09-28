@@ -405,7 +405,12 @@ local watch_spawn_cutscene = function(nest)
         if player.character and player.character.valid and not jail.is_jailed(player.name) then
             player.set_controller{type = defines.controllers.cutscene, start_zoom = 2, waypoints = waypoints}
             -- Same hint vanilla shows on the crash-site cutscene; TAB exits.
-            player.gui.screen.add{type = "label", caption = {"skip-cutscene"}, name = "ld_skip_hint"}
+            -- Reused when still present: a second loss while the cutscene
+            -- never ended threw "already present in the parent element",
+            -- which aborted the rest of the sequence (the countdown update).
+            if not player.gui.screen["ld_skip_hint"] then
+                player.gui.screen.add{type = "label", caption = {"skip-cutscene"}, name = "ld_skip_hint"}
+            end
         end
     end
 end
@@ -659,6 +664,12 @@ Public.on_configuration_changed = function() ensure_crash_loot() end
 -- Re-register the tick handler after a save/load if a reveal was in flight,
 -- since dynamic event registrations don't survive loading.
 Public.on_load = function()
+    -- A countdown left on screen by an earlier build (or a load mid-loss)
+    -- would sit there showing a stale number: the counter that owns it is
+    -- gone, so nothing ever updates it.
+    stop_defeat_countdown()
+    -- Pre-fix saves carry an absolute tick here; nothing reads it any more.
+    storage.defeat_at = nil
     if storage.reveal_index then
         script.on_event(defines.events.on_tick, on_tick_reveal)
     end
