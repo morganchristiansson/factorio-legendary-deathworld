@@ -444,8 +444,8 @@ Public.on_biter_base_built = function(event)
         -- Frozen here rather than on a timer: one pass at the loss, and one
         -- more if another nest lands while the countdown runs.
         local matched = freeze_all()
-        if storage.defeat_at then return end
-        storage.defeat_at = game.tick + DEFEAT_COUNTDOWN * 60
+        if storage.defeat_in then return end
+        storage.defeat_in = DEFEAT_COUNTDOWN
         log(string.format("event=defeat, position=%.1f,%.1f, seconds=%d, disabled=%d", position.x, position.y, DEFEAT_COUNTDOWN, matched))
         watch_spawn_cutscene(nest)
         update_defeat_countdown(DEFEAT_COUNTDOWN)
@@ -453,13 +453,13 @@ Public.on_biter_base_built = function(event)
 end
 
 local on_defeat_second = function()
-    if not storage.defeat_at then return end
-    storage.defeat_at = storage.defeat_at - 60
-    if storage.defeat_at > 0 then
-        update_defeat_countdown(math.floor(storage.defeat_at / 60))
+    if not storage.defeat_in then return end
+    storage.defeat_in = storage.defeat_in - 1
+    if storage.defeat_in > 0 then
+        update_defeat_countdown(storage.defeat_in)
         return
     end
-    storage.defeat_at = nil
+    storage.defeat_in = nil
     -- Cutscene still running when the map goes: hand control back first.
     for _, player in pairs(game.connected_players) do
         exit_cutscene(player)
@@ -513,7 +513,7 @@ local on_surface_cleared = function(event)
     storage.stomper = "behemoth-spitter"
     storage.victory = false
     storage.evo_stage = 0
-    storage.defeat_at = nil
+    storage.defeat_in = nil
     -- Evolution restarts: drop the apex entry synchronously so saves stay
     -- joinable (a sentinel healed by the minute tick would leave a
     -- poisoned-filter window).
