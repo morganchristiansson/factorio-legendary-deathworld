@@ -126,13 +126,14 @@ commands.add_command("spectate-mode", "Enable or disable spectator permissions. 
     game.print("Default spectator mode is now " .. (enabled and "on" or "off") .. ".")
 end)
 
+-- TEMPORARY test command: delete once the loss sequence no longer needs
+-- rehearsing (cutscene, freeze, reset all run fine from /reset + waiting).
 commands.add_command("defeat", "Test the loss sequence without waiting for biters. Plants a nest on spawn, freezes the enemy, shows the cutscene, resets in 1m. Usage: /defeat", function(command)
-    if command.player_index then
-        local player = game.get_player(command.player_index)
-        if not player.admin then
-            player.print("Only admins can use this command.")
-            return
-        end
+    -- Admins only, in game: the console has /reset and gains nothing here.
+    local player = command.player_index and game.get_player(command.player_index)
+    if not (player and player.admin) then
+        reply(command, "Only admins can use this command.")
+        return
     end
     -- A biter nest is spawners plus worm turrets; any of them inside the
     -- spawn box is a loss. Then hand the spawner to the real trigger, so the
