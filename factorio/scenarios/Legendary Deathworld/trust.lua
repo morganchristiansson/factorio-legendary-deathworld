@@ -38,8 +38,10 @@ end
 -- so it must not be derived from Default's current state: a snapshot taken
 -- while spectate mode was on captured the stripped set, and restoring from it
 -- left Default deny-all with no way back (the group lives in the save, so the
--- bad snapshot outlived restarts). Full permissions are the baseline instead;
--- /trust is admin-only, so granting them is the admin's explicit choice.
+-- bad snapshot outlived restarts). Full permissions minus ALWAYS_DENIED are
+-- the baseline instead; /trust is admin-only, so granting them is the admin's
+-- explicit choice. The editor and cheat belong to the built-in server group:
+-- game.permissions.get_group("server").add_player("<name>") from the console.
 local function get_trusted_group()
     local group = game.permissions.get_group(TRUSTED_GROUP_NAME)
     if not group then
@@ -74,7 +76,7 @@ local function restore_default_permissions()
         local action = defines.input_action[action_name]
         default.set_allows_action(action, trusted.allows_action(action))
     end
-    Public.restrict_default()
+    Public.restrict_players()
 end
 
 local function get_target(name)
@@ -106,8 +108,10 @@ local function set_group(player, group)
     return true
 end
 
--- Actions Default never gets, whoever restores it: without this the restore
--- below hands out cheat and the map editor along with everything else.
+-- Actions no player group ever gets. The map editor, cheat and permission
+-- editing stay with the built-in server group -- two tiers, players in the
+-- server group are the devs who need them. Without this the trusted baseline
+-- below hands out the editor and cheat along with everything else.
 local ALWAYS_DENIED = {
     "add_permission_group",
     "delete_permission_group",
@@ -119,11 +123,15 @@ local ALWAYS_DENIED = {
     "cheat",
 }
 
--- Idempotent: safe to call after every Default change.
-Public.restrict_default = function()
-    local default = get_default_group()
-    for _, action_name in ipairs(ALWAYS_DENIED) do
-        default.set_allows_action(defines.input_action[action_name], false)
+-- Idempotent: safe to call after any group change. Trusted and Default end up
+-- with the same permissions -- trusted exists to be immune to spectate mode,
+-- not to hand out anything extra. Editor, cheat and permission editing stay
+-- with the server group.
+Public.restrict_players = function()
+    for _, group in ipairs{get_trusted_group(), get_default_group()} do
+        for _, action_name in ipairs(ALWAYS_DENIED) do
+            group.set_allows_action(defines.input_action[action_name], false)
+        end
     end
 end
 

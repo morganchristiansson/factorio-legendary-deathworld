@@ -74,9 +74,8 @@ end
 -- Chunks force-generated per tick. Generation runs ~6ms per chunk, so 3 sits
 -- at the 16.6ms tick budget: the reveal costs the same wall time it always
 -- did -- that work is fixed -- but each tick stalls a third as long. Each
--- reveal logs its own ms_per_chunk; a machine that logs more than ~6 wants a
--- proportionally lower number here (16.6 / ms_per_chunk is the rate that
--- fills a tick exactly).
+-- reveal logs its own wall time; the reveal is 1440 chunks, so a machine that
+-- logs much more than ~8.6s wants a proportionally lower number here.
 local REVEAL_CHUNKS_PER_TICK = 3
 
 -- A LuaProfiler cannot be read from Lua -- it arrives as a LocalisedString,
@@ -105,10 +104,10 @@ local on_tick_reveal = function()
     if index > #reveal_order then
         -- All batches generated and charted: final safety sweep, then stop.
         game.forces["player"].chart_all("nauvis")
+        -- Total wall time of the reveal. divide() would give ms-per-chunk but
+        -- takes no argument in this build (self only), same as add().
         reveal_total.stop()
-        -- divide() changes what gets logged, not a value Lua can read.
-        reveal_total:divide(#reveal_order)
-        log({"", "event=map-reveal, ms_per_chunk", reveal_total})
+        log({"", "event=map-reveal, wall", reveal_total})
         storage.reveal_index = nil
         script.on_event(defines.events.on_tick, nil)
     else
@@ -604,7 +603,7 @@ Public.setup_first_round = function(player)
     storage.init_ran = true
 
     game.forces["enemy"].friendly_fire = false
-    trust.restrict_default()
+    trust.restrict_players()
     -- Spectate mode is a runtime toggle (/spectate-mode on|off), not the
     -- starting state: fresh games play normally and perform_reset turns it
     -- off. Permissions live in the save, so an old spectate-on save stays

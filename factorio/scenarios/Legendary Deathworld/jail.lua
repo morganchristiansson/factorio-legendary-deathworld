@@ -8,13 +8,12 @@
 -----------------------------------------------------------------------
 local GULAG_SURFACE_NAME = "gulag"
 local GULAG_GROUP_NAME = "gulag"
--- A group change issued inside a command raised by another player's client is
--- silently reverted by the engine: the pit teleport lands but the prisoner
--- keeps their old, unrestricted group (event=jail logged actual_group=server
--- right after add_player returned). Biter Battles never sees this because its
--- /jail always comes from the console, where the change sticks. Re-asserting
--- from a tick -- where the console's own changes do stick -- makes the gulag
--- self-healing instead of one-shot.
+-- LuaPlayer.permission_group is cached per player and only flushed by a group
+-- write, so membership cannot be verified where it is issued: neither /jail
+-- nor /free checks it, and enforce_jail_state below re-asserts both sides on a
+-- tick, where the change sticks even when it came from a player's client. That
+-- makes the gulag self-healing rather than one-shot. Biter Battles never checks
+-- either -- it just does the add and trusts the teleport to hold.
 local ENFORCE_INTERVAL = 20
 -- How long a release keeps re-asserting the restored group.
 local RELEASE_GRACE = 600
@@ -208,8 +207,7 @@ Public.jail = function(actor, name, reason)
     -- Group first, teleport second, and never gate the group on the
     -- teleport having landed: LuaPlayer.surface still reports the old
     -- surface for a tick, which silently skipped the group and left the
-    -- prisoner walking around the pit with full permissions. The log line
-    -- below reports what the engine actually applied.
+    -- prisoner walking around the pit with full permissions.
     get_gulag_permission_group().add_player(target.name)
     storage.releasing = storage.releasing or {}
     storage.releasing[target.name] = nil
@@ -219,23 +217,13 @@ Public.jail = function(actor, name, reason)
     game.print(message)
     target.clear_console()
     target.print(message)
-    -- Observability only: report what the engine actually applied, so a
-    -- silent add_player failure shows up in the log instead of as a
-    -- prisoner who can still build. Same-tick read-back, so it can lag the
-    -- real membership by a tick (jail.lua:207 logged actual_group=Default
-    -- right after a successful add) -- treat it as a hint, not a verdict.
-    local actual_group = target.permission_group and target.permission_group.name or "none"
-    log(string.format("event=jail, actor=%s, target=%s, reason=%s, source_group=%s, actual_group=%s, surface=%s, admin=%s",
-        actor, target.name, reason, source_group and source_group.name or "none", actual_group,
+    log(string.format("event=jail, actor=%s, target=%s, reason=%s, source_group=%s, surface=%s, admin=%s",
+        actor, target.name, reason, source_group and source_group.name or "none",
         target.surface.name, tostring(target.admin)))
-    if actual_group ~= GULAG_GROUP_NAME then
-        -- Log it as well as printing: the in-game console is not readable
-        -- after the fact, and this is the only signal the group was dropped.
-        log(string.format("event=jail-warning, actor=%s, target=%s, expected=%s, actual=%s, surface=%s",
-            actor, target.name, GULAG_GROUP_NAME, actual_group, target.surface.name))
-        game.print(string.format("[jail] WARNING: %s should be in group '%s' but engine reports '%s'",
-            target.name, GULAG_GROUP_NAME, actual_group))
-    end
+    -- No group read-back here: LuaPlayer.permission_group lags a tick behind
+    -- the add, so a same-tick check only ever sees the pre-jail group.
+    -- enforce_jail_state reads it from a tick handler and warns if the
+    -- prisoner is still not in the gulag group.
     return true
 end
 
@@ -273,7 +261,6 @@ Public.free = function(actor, name)
     -- the released player is stuck in the deny-all group with no way out, so
     -- the enforcement tick below keeps re-asserting it for a while.
     storage.releasing[name] = {group = restored_group.name, expires = game.tick + RELEASE_GRACE}
-    local actual_group = target.permission_group and target.permission_group.name or "none"
 
     local surface = game.surfaces[data.surface_index] or game.surfaces[1]
     local position = surface.find_non_colliding_position("character", data.position, 128, 1)
@@ -286,14 +273,10 @@ Public.free = function(actor, name)
 
     local message = string.format("%s was released from jail by %s.", name, actor)
     game.print(message)
-    log(string.format("event=release, actor=%s, target=%s, restored_group=%s, actual_group=%s",
-        actor, name, restored_group.name, actual_group))
-    if actual_group ~= restored_group.name then
-        log(string.format("event=release-warning, actor=%s, target=%s, expected=%s, actual=%s",
-            actor, name, restored_group.name, actual_group))
-        game.print(string.format("[jail] WARNING: %s should be in group '%s' but engine reports '%s'",
-            name, restored_group.name, actual_group))
-    end
+    -- No read-back here, same reason as jail(): LuaPlayer.permission_group
+    -- lags a tick, so it only reports the pre-release group. enforce_jail_state
+    -- checks it from a tick handler and warns if a restore had to be re-asserted.
+    log(string.format("event=release, actor=%s, target=%s, restored_group=%s", actor, name, restored_group.name))
     return true
 end
 
@@ -310,6 +293,12 @@ local enforce_jail_state = function()
         local player = game.get_player(name)
         if player and player.valid then
             if not player.permission_group or player.permission_group.name ~= GULAG_GROUP_NAME then
+                -- Reads here can be stale: permission_group is cached per
+                -- player and only flushed by a group write, so it may report
+                -- the pre-jail group ticks after the add. Re-assert anyway --
+                -- it is idempotent -- but do not warn: two attempts at
+                -- checking this (same-tick in /jail, here) both produced
+                -- false positives, and Biter Battles does not check at all.
                 group.add_player(name)
             end
             if gulag and player.surface.index ~= gulag.index then
@@ -329,6 +318,7 @@ local enforce_jail_state = function()
         else
             local restored = game.permissions.get_group(pending.group)
             if player and player.valid and restored then
+                -- Idempotent for the same reason as the re-assert above.
                 restored.add_player(name)
             end
         end
