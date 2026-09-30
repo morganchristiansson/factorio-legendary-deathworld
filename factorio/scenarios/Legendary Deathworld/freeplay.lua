@@ -287,6 +287,36 @@ script.set_event_filter(defines.events.on_entity_died, apex_filter(nil))
 script.on_event(defines.events.on_post_entity_died,
 function(event)
     if event.prototype.type == "unit-spawner" then
+        -- Named when the engine says who: last_user for turret and flamethrower
+        -- kills, cause.player for the character that fired. Attribution, not
+        -- credit -- a killed nest spawns two legendary guardians, and those
+        -- end up killing more nests, often the killers' own, so this is
+        -- context rather than an accusation. Where nobody is named (artillery,
+        -- capsules, spreading fire, guardians) the death is announced without
+        -- a name and the log records why. cause can be gone by now (turret
+        -- destroyed in the same event), hence the valid check.
+        local cause = event.cause
+        local cause_name, cause_type, cause_user = "none", "none", false
+        local killer
+        if cause and cause.valid then
+            cause_name, cause_type, cause_user = cause.name, cause.prototype.type, cause.last_user ~= nil
+            killer = cause.last_user or cause.player
+        end
+        if killer then
+            game.print({"ld-nest-killed", killer.name})
+        else
+            game.print("ld-nest-killed-unknown")
+        end
+        -- Inline the fields rather than string.format: the empty key skips the
+        -- locale lookup and prints the params as-is, so the line stays one
+        -- readable string with no %s bookkeeping.
+        log{"", "event=nest-killed, actor=", killer and killer.name or "unknown",
+            ", position=", format_position(event.position),
+            ", prototype=", event.prototype.name,
+            ", cause=", cause_name,
+            ", cause_type=", cause_type,
+            ", cause_user=", tostring(cause_user),
+            ", connected=", #game.connected_players}
         local pos = game.surfaces[1].find_non_colliding_position(storage.strafer, event.position, 10, 0.5)
         game.surfaces[1].create_entity{name = storage.strafer, position = pos, quality = "legendary"}
         pos = game.surfaces[1].find_non_colliding_position(storage.stomper, event.position, 10, 0.5)
