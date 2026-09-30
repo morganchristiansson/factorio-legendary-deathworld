@@ -1,2 +1,7 @@
 dist/
 .cache/
+
+# editor / scratch
+tmp.txt
+.tmp.txt.kate-swp
+*.swp

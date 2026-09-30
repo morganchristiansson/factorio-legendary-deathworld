@@ -134,9 +134,9 @@ commands.add_command("defeat", "Test the loss sequence without waiting for biter
             return
         end
     end
-    -- A biter nest is spawners plus worm turrets; more than three buildings in
-    -- the box is what counts as a loss. Then hand the spawner to the real
-    -- trigger, so the test runs the same path the game does.
+    -- A biter nest is spawners plus worm turrets; any of them inside the
+    -- spawn box is a loss. Then hand the spawner to the real trigger, so the
+    -- test runs the same path the game does.
     local nest = game.surfaces[1].create_entity{name = "biter-spawner", position = {x = 0, y = 0}, force = "enemy"}
     for _, building in ipairs({{"biter-spawner", -12, 4}, {"biter-spawner", 10, -8}, {"small-worm-turret", -6, -12}}) do
         game.surfaces[1].create_entity{name = building[1], position = {x = building[2], y = building[3]}, force = "enemy"}

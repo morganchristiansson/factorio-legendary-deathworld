@@ -71,9 +71,18 @@ for r = REVEAL_CORE_RADIUS + 1, REVEAL_MAX_RADIUS do
     end
 end
 
--- Chunks force-generated per tick. Higher = faster reveal, bigger stutter.
--- Measured ~3.7ms per chunk: 100 -> ~370ms spikes, ~3.5s total reveal.
-local REVEAL_CHUNKS_PER_TICK = 100
+-- Chunks force-generated per tick. Generation runs ~6ms per chunk, so 3 sits
+-- at the 16.6ms tick budget: the reveal costs the same wall time it always
+-- did -- that work is fixed -- but each tick stalls a third as long. Each
+-- reveal logs its own ms_per_chunk; a machine that logs more than ~6 wants a
+-- proportionally lower number here (16.6 / ms_per_chunk is the rate that
+-- fills a tick exactly).
+local REVEAL_CHUNKS_PER_TICK = 3
+
+-- A LuaProfiler cannot be read from Lua -- it arrives as a LocalisedString,
+-- which log() resolves: an empty key skips the lookup and prints the params,
+-- so the profiler can be passed straight in.
+local reveal_total = nil
 
 local on_tick_reveal = function()
     local surface = game.surfaces[1]
@@ -96,6 +105,10 @@ local on_tick_reveal = function()
     if index > #reveal_order then
         -- All batches generated and charted: final safety sweep, then stop.
         game.forces["player"].chart_all("nauvis")
+        reveal_total.stop()
+        -- divide() changes what gets logged, not a value Lua can read.
+        reveal_total:divide(#reveal_order)
+        log({"", "event=map-reveal, ms_per_chunk", reveal_total})
         storage.reveal_index = nil
         script.on_event(defines.events.on_tick, nil)
     else
@@ -114,6 +127,8 @@ local start_map_reveal = function(surface)
     local core_tiles = REVEAL_CORE_RADIUS * 32
     game.forces["player"].chart(surface, {{-core_tiles, -core_tiles}, {core_tiles, core_tiles}})
     storage.reveal_index = 1
+    reveal_total = game.create_profiler()
+    reveal_total.restart()
     script.on_event(defines.events.on_tick, on_tick_reveal)
 end
 
@@ -442,7 +457,7 @@ local on_cutscene_end = function(event)
     for _, other in pairs(game.connected_players) do
         if other.controller_type == defines.controllers.cutscene then return end
     end
-    log(string.format("event=defeat_freeze, disabled=%d", freeze_all()))
+    freeze_all()
 end
 
 -- Shared by the trigger below and control.lua's /defeat test command, which
@@ -462,7 +477,7 @@ Public.on_biter_base_built = function(event)
         -- The swarm keeps fighting through the cutscene; on_cutscene_end
         -- freezes it. Nobody to show it to (all in the gulag) -> freeze now.
         if not watch_spawn_cutscene(nest) then
-            log(string.format("event=defeat_freeze, disabled=%d", freeze_all()))
+            freeze_all()
         end
         update_defeat_countdown(DEFEAT_COUNTDOWN)
     end

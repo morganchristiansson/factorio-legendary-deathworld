@@ -134,14 +134,14 @@ local function apply_default_spectate(enabled)
     else
         restore_default_permissions()
     end
-    log("event=default-spectate, enabled=" .. tostring(enabled))
+    log("event=spectate-mode, enabled=" .. tostring(enabled))
 end
 
 -----------------------------------------------------------------------
 -- Permission changes made while a command from a player's client is being
 -- processed are rolled back by the engine. Two independent sightings, same
 -- signature -- the call returns, the log says it worked, nothing changed:
---   /spectate-mode on  -> event=default-spectate enabled=true, Default left
+--   /spectate-mode on  -> event=spectate-mode enabled=true, Default left
 --                          at its previous 271/279
 --   /jail from another admin -> event=jail actual_group=server right after a
 --                          successful add_player
