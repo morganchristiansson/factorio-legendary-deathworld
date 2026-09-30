@@ -338,10 +338,10 @@ end
 
 -----------------------------------------------------------------------
 -- Loss: the enemy nest lands on the spawn point. Instead of resetting
--- mid-tick we stop the fight (entities show "disabled by script", the same
--- lever Biter Battles pulls on a lost match), cut everyone to a flyover of
--- the nest (shaped like the crash-site intro everyone knows, aimed at what
--- they actually built), and reset DEFEAT_COUNTDOWN seconds later.
+-- mid-tick we cut everyone to a flyover of what they built (shaped like the
+-- crash-site intro everyone knows) and stop the fight once the flyover ends
+-- (entities show "disabled by script", the same lever Biter Battles pulls on
+-- a lost match), then reset DEFEAT_COUNTDOWN seconds later.
 local DEFEAT_COUNTDOWN = 60
 local SPAWN_BOX = {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}}
 
@@ -380,29 +380,34 @@ local freeze_all = function()
     return matched
 end
 
+-- Returns true when at least one player got the camera.
 local watch_spawn_cutscene = function(nest)
-    -- Crash-site intro, retargeted: pan onto every nest they planted, end on
-    -- a wide shot of all of them. Worm turrets are skipped -- the nests are
+    -- Crash-site intro, retargeted: glide onto what they built, then pull
+    -- back. Worm turrets are skipped -- the nests are
     -- what triggers the loss. No start_position: the engine starts each
     -- cutscene at that player's own position, so everyone pans in from
     -- wherever they happen to be standing.
-    local waypoints = {}
     local center = {x = 0, y = 0}
     for _, entity in pairs(nest) do
-        if entity.type == "unit-spawner" then
-            local position = entity.position
-            center.x = center.x + position.x
-            center.y = center.y + position.y
-            waypoints[#waypoints + 1] = {position = {x = position.x, y = position.y}, zoom = 2, transition_time = 90, time_to_wait = 90}
-        end
+        center.x = center.x + entity.position.x
+        center.y = center.y + entity.position.y
     end
-    if #waypoints > 0 then
-        center.x, center.y = center.x / #waypoints, center.y / #waypoints
+    if #nest > 0 then
+        center.x, center.y = center.x / #nest, center.y / #nest
     end
-    waypoints[#waypoints + 1] = {position = center, zoom = 0.5, transition_time = 150, time_to_wait = 0}
+    -- Two steps: glide in on the nest at close zoom, then pull back to the
+    -- wide shot fast and linger there -- that long wait is where players
+    -- watch the swarm come apart, since the enemies keep fighting through
+    -- the cutscene (freeze_all waits for it to end).
+    local waypoints = {
+        {position = center, zoom = 2, transition_time = 200, time_to_wait = 60},
+        {position = center, zoom = 0.5, transition_time = 125, time_to_wait = 480},
+    }
+    local shown = false
     for _, player in pairs(game.connected_players) do
         if player.character and player.character.valid and not jail.is_jailed(player.name) then
             player.set_controller{type = defines.controllers.cutscene, start_zoom = 2, waypoints = waypoints}
+            shown = true
             -- Same hint vanilla shows on the crash-site cutscene; TAB exits.
             -- Reused when still present: a second loss while the cutscene
             -- never ended threw "already present in the parent element",
@@ -412,6 +417,7 @@ local watch_spawn_cutscene = function(nest)
             end
         end
     end
+    return shown
 end
 
 local exit_cutscene = function(player)
@@ -431,6 +437,12 @@ local on_cutscene_end = function(event)
     local player = game.get_player(event.player_index)
     local hint = player and player.valid and player.gui.screen["ld_skip_hint"]
     if hint then hint.destroy() end
+    -- Freeze once the last player is out of the cutscene (skips count).
+    if not storage.defeat_in then return end
+    for _, other in pairs(game.connected_players) do
+        if other.controller_type == defines.controllers.cutscene then return end
+    end
+    log(string.format("event=defeat_freeze, disabled=%d", freeze_all()))
 end
 
 -- Shared by the trigger below and control.lua's /defeat test command, which
@@ -440,18 +452,18 @@ Public.on_biter_base_built = function(event)
     if (position.x > -34 and position.x < 34 and position.y > -34 and position.y < 34) then
         game.print({"ld-announcement", {"ld-defeat-imminent"}})
         local nest = game.surfaces[1].find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
-        if #nest <= 3 and game.ticks_played >= 36000 then return end
         -- Both widgets live at the top of the screen, and a loss can land
         -- while a reroll vote is still open. The vote is moot: the countdown
         -- ends in a reset, which opens a fresh one.
         stop_reroll_vote()
-        -- Frozen here rather than on a timer: one pass at the loss, and one
-        -- more if another nest lands while the countdown runs.
-        local matched = freeze_all()
         if storage.defeat_in then return end
         storage.defeat_in = DEFEAT_COUNTDOWN
-        log(string.format("event=defeat, position=%.1f,%.1f, seconds=%d, disabled=%d", position.x, position.y, DEFEAT_COUNTDOWN, matched))
-        watch_spawn_cutscene(nest)
+        log(string.format("event=defeat, position=%.1f,%.1f, seconds=%d", position.x, position.y, DEFEAT_COUNTDOWN))
+        -- The swarm keeps fighting through the cutscene; on_cutscene_end
+        -- freezes it. Nobody to show it to (all in the gulag) -> freeze now.
+        if not watch_spawn_cutscene(nest) then
+            log(string.format("event=defeat_freeze, disabled=%d", freeze_all()))
+        end
         update_defeat_countdown(DEFEAT_COUNTDOWN)
     end
 end
@@ -578,7 +590,10 @@ Public.setup_first_round = function(player)
 
     game.forces["enemy"].friendly_fire = false
     trust.restrict_default()
-    trust.set_default_spectate(true)
+    -- Spectate mode is a runtime toggle (/spectate-mode on|off), not the
+    -- starting state: fresh games play normally and perform_reset turns it
+    -- off. Permissions live in the save, so an old spectate-on save stays
+    -- spectating until an admin runs /spectate-mode off once.
 
     if not storage.disable_crashsite then
         local surface = player.surface
@@ -602,6 +617,9 @@ end
 -- control.lua's /reset command (with the acting player) and by freeplay.lua
 -- on defeat conditions.
 Public.perform_reset = function(actor, seed)
+    -- Spectate mode is off between rounds: the Default group plays, and a
+    -- round that started with it on (admin toggle, or an older save) leaves
+    -- nobody frozen after the reset.
     trust.disable_default_spectate()
 
     -- actor: player name (or "server" for console) for manual /reset runs,
