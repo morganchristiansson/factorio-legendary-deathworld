@@ -145,6 +145,21 @@ commands.add_command("defeat", "Test the loss sequence without waiting for biter
     reset.on_biter_base_built{entity = nest, surface_index = 1}
 end)
 
+commands.add_command("close-vote", "Ends the reroll vote now and keeps this map. Usage: /close-vote", function(command)
+    if not command.player_index then
+        game.print("Only admins can use this command.")
+        return
+    end
+    local player = game.get_player(command.player_index)
+    if not player.admin then
+        player.print("Only admins can use this command.")
+        return
+    end
+    if not reset.close_reroll_vote() then
+        reply(command, "There is no reroll vote running.")
+    end
+end)
+
 commands.add_command("reset", "Resets map. Usage: /reset [seed]", function(command)
     local actor = "server"
     if command.player_index then

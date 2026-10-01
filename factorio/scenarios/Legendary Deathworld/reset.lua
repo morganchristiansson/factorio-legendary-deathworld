@@ -71,12 +71,13 @@ for r = REVEAL_CORE_RADIUS + 1, REVEAL_MAX_RADIUS do
     end
 end
 
--- Chunks force-generated per tick. Generation runs ~6ms per chunk, so 3 sits
--- at the 16.6ms tick budget: the reveal costs the same wall time it always
--- did -- that work is fixed -- but each tick stalls a third as long. Each
--- reveal logs its own wall time; the reveal is 1440 chunks, so a machine that
--- logs much more than ~8.6s wants a proportionally lower number here.
-local REVEAL_CHUNKS_PER_TICK = 3
+-- Chunks force-generated per tick. Measured wall time for the 1440-chunk
+-- reveal on this box: 3/tick ~15.5s, 8/tick ~8.6s. Smaller batches are not
+-- free -- the per-batch overhead and the workers idling between them cost more
+-- than the per-tick stall they save, so do not trade this down for smoothness.
+-- Each reveal logs its own wall time; a much slower machine may want fewer
+-- chunks here, but it should expect the reveal to take longer.
+local REVEAL_CHUNKS_PER_TICK = 8
 
 -- A LuaProfiler cannot be read from Lua -- it arrives as a LocalisedString,
 -- which log() resolves: an empty key skips the lookup and prints the params,
@@ -235,7 +236,6 @@ local REROLL_DURATION = 90
 local REROLL_FRAME = "ld_reroll_frame"
 local REROLL_YES = "ld_reroll_yes"
 local REROLL_NO = "ld_reroll_no"
-local REROLL_CLOSE = "ld_reroll_close"
 
 -- Loss countdown: same top-of-screen frame as the reroll vote, no buttons.
 -- Drawn and ticked by the defeat sequence further down.
@@ -263,6 +263,9 @@ local stop_defeat_countdown = function()
     end
 end
 
+-- Set by a passed vote so the new map's opener is not printed twice.
+local reroll_announced = false
+
 local reroll_stats = function()
     local yes, total = 0, 0
     for _, vote in pairs(storage.reroll_votes or {}) do
@@ -286,11 +289,6 @@ local draw_reroll_gui = function(player)
     local yes_button = flow.add{type = "button", name = REROLL_YES, caption = "Yes", style = "confirm_button"}
     yes_button.style.minimal_width = 56
     yes_button.style.maximal_width = 56
-    if player.admin then
-        local close_button = flow.add{type = "button", name = REROLL_CLOSE, caption = "Close", tooltip = "End the vote now (keeps this map)"}
-        close_button.style.minimal_width = 56
-        close_button.style.maximal_width = 56
-    end
     local percent, yes_votes, no_votes = reroll_stats()
     flow.add{type = "label", name = "reroll_stats", caption = {"ld-reroll-stats", no_votes, yes_votes, percent}}
 end
@@ -307,22 +305,39 @@ end
 local start_reroll_vote = function()
     storage.reroll_votes = {}
     storage.reroll_time_left = REROLL_DURATION
-    game.print({"ld-announcement", {"ld-reroll-start"}})
+    -- After a passed reroll the result line already told players the vote is
+    -- open again, so the opener would just repeat it a moment later.
+    if not reroll_announced then
+        game.print({"ld-announcement", {"ld-reroll-start"}})
+    end
+    reroll_announced = false
     for _, player in pairs(game.connected_players) do
         draw_reroll_gui(player)
     end
 end
 
-local pass_reroll_vote = function()
-    local percent = reroll_stats()
-    game.print({"ld-announcement", {"ld-reroll-pass", percent}})
+-- Ballot counts, not a percentage: the denominator is whoever voted, not
+-- everyone online, and "1 of 1" should read as the thin win it is. The
+-- announcement names the rule that decided it, because the two bars differ and
+-- players should not have to guess which applied: a ballot settles the vote on
+-- a majority of everyone connected, the timer on a majority of ballots cast.
+-- reason is "majority", "timeout" or "closed" (an admin ending it).
+local pass_reroll_vote = function(reason)
+    local _, yes, no = reroll_stats()
+    reroll_announced = true
+    game.print({"ld-announcement", {"ld-reroll-pass-" .. reason, yes, yes + no, REROLL_DURATION}})
     stop_reroll_vote()
     Public.perform_reset(nil)
 end
 
-local fail_reroll_vote = function()
-    local percent = reroll_stats()
-    game.print({"ld-announcement", {"ld-reroll-fail", percent}})
+-- Nobody voting and an admin calling it off are both failures that no majority
+-- produced, so they get their own words rather than the timeout's.
+local fail_reroll_vote = function(reason)
+    local _, yes, no = reroll_stats()
+    if reason ~= "closed" and yes + no == 0 then
+        reason = "empty"
+    end
+    game.print({"ld-announcement", {"ld-reroll-fail-" .. reason, yes, yes + no}})
     stop_reroll_vote()
 end
 
@@ -344,9 +359,9 @@ local on_reroll_second = function()
     end
     local _, yes_votes, no_votes = reroll_stats()
     if yes_votes * 2 > yes_votes + no_votes then
-        pass_reroll_vote()
+        pass_reroll_vote("timeout")
     else
-        fail_reroll_vote()
+        fail_reroll_vote("timeout")
     end
 end
 
@@ -461,6 +476,14 @@ end
 
 -- Shared by the trigger below and control.lua's /defeat test command, which
 -- hands it a synthetic event so the test runs the real path.
+-- control.lua's /close-vote: admins end the vote and keep the map, the same
+-- way Biter Battles' /difficulty-close-vote works -- a command, not a button.
+Public.close_reroll_vote = function()
+    if not storage.reroll_votes then return false end
+    fail_reroll_vote("closed")
+    return true
+end
+
 Public.on_biter_base_built = function(event)
     local position = event.entity.position
     if (position.x > -34 and position.x < 34 and position.y > -34 and position.y < 34) then
@@ -510,27 +533,22 @@ script.on_nth_tick(60, on_periodic_second)
 local on_reroll_click = function(event)
     if not storage.reroll_votes then return end
     if not (event.element and event.element.valid) then return end
-    if event.element.name == REROLL_CLOSE then
-        local player = game.get_player(event.player_index)
-        if player and player.valid and player.admin then
-            fail_reroll_vote()
-        end
-        return
-    end
     if event.element.name ~= REROLL_YES and event.element.name ~= REROLL_NO then return end
     local player = game.get_player(event.player_index)
     if not (player and player.valid) then return end
     storage.reroll_votes[player.name] = (event.element.name == REROLL_YES) and 1 or 0
     -- A strict majority of connected players either way decides the vote at
-    -- once: the remaining ballots can no longer flip the result.
+    -- once: the remaining ballots can no longer flip the result. The timer
+    -- below is the looser bar (majority of ballots cast), hence the early flag
+    -- that tells the two apart in the announcement.
     local yes, no = 0, 0
     for _, vote in pairs(storage.reroll_votes) do
         if vote == 1 then yes = yes + 1 else no = no + 1 end
     end
     if yes * 2 > #game.connected_players then
-        pass_reroll_vote()
+        pass_reroll_vote("majority")
     elseif no * 2 > #game.connected_players then
-        fail_reroll_vote()
+        fail_reroll_vote("majority")
     end
 end
 
