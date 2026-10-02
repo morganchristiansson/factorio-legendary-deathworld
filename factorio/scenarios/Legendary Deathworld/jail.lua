@@ -177,6 +177,10 @@ local teleport_to_gulag = function(player)
         player.teleport(position, surface.name)
     end
     player.opened = defines.gui_type.none
+    -- Map view and remote view are one mode in 2.x, and opening either is an
+    -- input action this group denies, so all that is left is closing the one
+    -- they were already looking at when they got here.
+    player.exit_remote_view()
 end
 
 -----------------------------------------------------------------------
