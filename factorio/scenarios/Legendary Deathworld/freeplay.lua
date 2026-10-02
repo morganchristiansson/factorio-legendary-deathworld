@@ -302,10 +302,16 @@ function(event)
             cause_name, cause_type, cause_user = cause.name, cause.prototype.type, cause.last_user ~= nil
             killer = cause.last_user or cause.player
         end
+        -- Coordinates arrive as one prebuilt tag parameter so translators can
+        -- place it anywhere in the sentence (or drop it) without touching
+        -- the two coordinates separately. localised_name is passed as a
+        -- LocalisedString, so the nest's name follows the player's locale.
+        local tag = string.format("[gps=%.1f,%.1f]", event.position.x, event.position.y)
+        local nest = event.prototype.localised_name
         if killer then
-            game.print({"ld-nest-killed", killer.name})
+            game.print({"ld-nest-killed", killer.name, tag, nest})
         else
-            game.print("ld-nest-killed-unknown")
+            game.print({"ld-nest-killed-unknown", tag, nest})
         end
         -- Inline the fields rather than string.format: the empty key skips the
         -- locale lookup and prints the params as-is, so the line stays one
