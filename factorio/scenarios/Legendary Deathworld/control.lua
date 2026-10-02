@@ -1,12 +1,12 @@
 local handler = require("event_handler")
 local reset = require("reset")
 local jail = require("jail")
-local trust = require("trust")
+local groups = require("groups")
 handler.add_lib(require("freeplay"))
 handler.add_lib(require("welcome"))
 handler.add_lib(require("reset"))
 handler.add_lib(require("jail"))
-handler.add_lib(trust)
+handler.add_lib(groups)
 
 -- Command feedback goes only to the caller; the console keeps seeing it.
 local function reply(command, message)
@@ -15,6 +15,24 @@ local function reply(command, message)
     else
         game.print(message)
     end
+end
+
+-- Admin-only in game, console always allowed, and the trimmed <player>
+-- argument -- nil after replying with why, so callers can just return.
+local function admin_target(command, usage)
+    if command.player_index then
+        local player = game.get_player(command.player_index)
+        if not player.admin then
+            player.print("Only admins can use this command.")
+            return nil
+        end
+    end
+    local target = (command.parameter or ""):match("^%s*(.-)%s*$")
+    if target == "" then
+        reply(command, "Usage: " .. usage)
+        return nil
+    end
+    return target
 end
 
 if script.active_mods["space-age"] then
@@ -70,39 +88,45 @@ commands.add_command("free", "Release a player from the gulag. Usage: /free <pla
     end
 end)
 
-commands.add_command("trust", "Allow a player to participate. Usage: /trust <player>", function(command)
-    if command.player_index then
-        local player = game.get_player(command.player_index)
-        if not player.admin then
-            player.print("Only admins can use this command.")
-            return
-        end
-    end
-    local target = (command.parameter or ""):match("^%s*(.-)%s*$")
-    if not target or target == "" then
-        reply(command, "Usage: /trust <player>")
+commands.add_command("freeze", "Restrict a player to spectator permissions, keeping them on the map. Usage: /freeze <player>", function(command)
+    local target = admin_target(command, "/freeze <player>")
+    if not target then
         return
     end
-    local ok, err = trust.trust(target)
+    local ok, err = groups.freeze(target)
     if not ok then
         reply(command, err)
     end
 end)
 
-commands.add_command("untrust", "Restrict a player to spectator permissions. Usage: /untrust <player>", function(command)
-    if command.player_index then
-        local player = game.get_player(command.player_index)
-        if not player.admin then
-            player.print("Only admins can use this command.")
-            return
-        end
-    end
-    local target = (command.parameter or ""):match("^%s*(.-)%s*$")
-    if not target or target == "" then
-        reply(command, "Usage: /untrust <player>")
+commands.add_command("unfreeze", "Give a frozen player their permissions back. Usage: /unfreeze <player>", function(command)
+    local target = admin_target(command, "/unfreeze <player>")
+    if not target then
         return
     end
-    local ok, err = trust.untrust(target)
+    local ok, err = groups.unfreeze(target)
+    if not ok then
+        reply(command, err)
+    end
+end)
+
+commands.add_command("trust", "Allow a player to participate. Usage: /trust <player>", function(command)
+    local target = admin_target(command, "/trust <player>")
+    if not target then
+        return
+    end
+    local ok, err = groups.trust(target)
+    if not ok then
+        reply(command, err)
+    end
+end)
+
+commands.add_command("untrust", "Move a trusted player back to Default permissions. Usage: /untrust <player>", function(command)
+    local target = admin_target(command, "/untrust <player>")
+    if not target then
+        return
+    end
+    local ok, err = groups.untrust(target)
     if not ok then
         reply(command, err)
     end
@@ -122,7 +146,7 @@ commands.add_command("spectate-mode", "Enable or disable spectator permissions. 
         return
     end
     local enabled = mode == "on"
-    trust.set_default_spectate(enabled)
+    groups.set_default_spectate(enabled)
     game.print("Default spectator mode is now " .. (enabled and "on" or "off") .. ".")
 end)
 

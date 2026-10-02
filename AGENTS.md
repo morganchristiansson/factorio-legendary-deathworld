@@ -11,7 +11,8 @@ server data under `factorio/`. The active scenario is **Legendary Deathworld**.
 | `freeplay.lua` | Game lifecycle: new-player kit, ordinary respawns, in-game events (nesting, research logging, victory detection) |
 | `reset.lua` | Map lifecycle: seed, wipe, staged map reveal, fresh-round setup, surface events |
 | `welcome.lua` | Join window shown to players |
-| `jail.lua` | Gulag: `/jail`/`/free` commands, jail surface, escape prevention |
+| `jail.lua` | Gulag: jail surface, jail/free commands, escape prevention |
+| `groups.lua` | Permission groups: the tiers, the temporary ones, trust/freeze commands |
 
 **Boundary rule:** one-time setup/reset events belong in `reset.lua`; anything
 that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
@@ -26,6 +27,10 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
 - **Never call `Force:chart()` from `on_chunk_generated`.** Charting freshly
   generated chunks schedules their ungenerated neighbours, which fire the event
   again -> infinite generation cascade. Chart once after generation completes.
+- **Permission writes from a player's command are refused**, whatever the admin
+  flag says: `edit_permission_group` for moving a player, `add_permission_group`
+  for creating one. `groups.lua` queues every group change and applies it from a
+  tick, where there is no acting player. Don't write a group from a command.
 - `script.on_init` / `on_load` / `on_configuration_changed` also allow only one
   handler each. New modules should expose `.events` / `.on_init` / `.on_load`
   fields on their returned table and register via `handler.add_lib` in
@@ -79,6 +84,12 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
 - Indentation: **4 spaces**, never tabs, in all added or updated code.
 - All diagnostics go through `log()` — no `helpers.write_file` feeds.
 - Keep comments present-tense; don't narrate removed code.
+
+## Tests
+
+- `test/` holds the runnable checks; `lua5.4 test/permissions.lua` from the repo
+  root covers the permission-group round trips against a stubbed engine API.
+- Add a case there rather than in a tool: `tools/` is deployment scripts only.
 
 ## Deploying scenario changes to saves
 

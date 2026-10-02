@@ -13,7 +13,7 @@
 local util = require("util")
 local crash_site = require("crash-site")
 local jail = require("jail")
-local trust = require("trust")
+local groups = require("groups")
 
 local Public = {}
 
@@ -567,6 +567,14 @@ local on_surface_cleared = function(event)
     storage.stomper = "behemoth-spitter"
     storage.victory = false
     storage.evo_stage = 0
+    storage.temporary_group = {}
+    -- Saves that predate the freeze group, and no acting player to be refused by
+    -- when it has to be created.
+    groups.ensure_groups()
+    -- Re-assert the tier policy every round: restrict_players otherwise only
+    -- runs in setup_first_round, so a change to the deny lists would never
+    -- reach a save that already had its first round.
+    groups.restrict_players()
     storage.defeat_in = nil
     -- Evolution restarts: drop the apex entry synchronously so saves stay
     -- joinable (a sentinel healed by the minute tick would leave a
@@ -621,11 +629,11 @@ Public.setup_first_round = function(player)
     storage.init_ran = true
 
     game.forces["enemy"].friendly_fire = false
-    trust.restrict_players()
+    groups.restrict_players()
     -- Spectate mode is a runtime toggle (/spectate-mode on|off), not the
     -- starting state: fresh games play normally and perform_reset turns it
-    -- off. Permissions live in the save, so an old spectate-on save stays
-    -- spectating until an admin runs /spectate-mode off once.
+    -- off. Group membership lives in the save, so an old spectate-on save
+    -- stays spectating until an admin runs /spectate-mode off once.
 
     if not storage.disable_crashsite then
         local surface = player.surface
@@ -649,10 +657,10 @@ end
 -- control.lua's /reset command (with the acting player) and by freeplay.lua
 -- on defeat conditions.
 Public.perform_reset = function(actor, seed)
-    -- Spectate mode is off between rounds: the Default group plays, and a
+    -- Spectate mode is off between rounds: everybody plays, and a
     -- round that started with it on (admin toggle, or an older save) leaves
     -- nobody frozen after the reset.
-    trust.disable_default_spectate()
+    groups.disable_default_spectate()
 
     -- actor: player name (or "server" for console) for manual /reset runs,
     -- nil for automatic resets. Manual resets are inferred by the presence
