@@ -448,6 +448,10 @@ local evo_stages = {
         storage.strafer = "big-strafer-pentapod"
         storage.stomper = "big-stomper-pentapod"
     end},
+    {0.80, "ld-evo-milestone-80", function()
+        storage.strafer = "behemoth-strafer-pentapod"
+        storage.stomper = "behemoth-stomper-pentapod"
+    end},
     {0.85, "ld-evo-milestone-85", function()
         game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.125
         game.map_settings.enemy_evolution.time_factor = 0.0004

@@ -22,6 +22,10 @@
       "enabled": true
     },
     {
+      "name": "behemoth-enemies",
+      "enabled": true
+    },
+    {
       "name": "custom-spawn-rates",
       "enabled": true
     },
