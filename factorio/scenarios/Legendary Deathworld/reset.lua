@@ -106,9 +106,17 @@ local on_tick_reveal = function()
         -- All batches generated and charted: final safety sweep, then stop.
         game.forces["player"].chart_all("nauvis")
         -- Total wall time of the reveal. divide() would give ms-per-chunk but
-        -- takes no argument in this build (self only), same as add().
-        reveal_total.stop()
-        log({"", "event=map-reveal, wall", reveal_total})
+        -- takes no argument in this build (self only), same as add(). The
+        -- profiler is a Lua object, so it does not survive a save: on_load
+        -- re-arms this handler for a reveal that was in flight, and without
+        -- one there is nothing to time. The cleanup below must not depend on
+        -- it -- raising here would leave the handler registered and the index
+        -- set, charting the whole map every tick for the rest of the game.
+        if reveal_total then
+            reveal_total.stop()
+            log({"", "event=map-reveal, wall", reveal_total})
+            reveal_total = nil
+        end
         storage.reveal_index = nil
         script.on_event(defines.events.on_tick, nil)
     else
