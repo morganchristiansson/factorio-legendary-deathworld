@@ -176,7 +176,7 @@ commands.add_command("set-spawn", "Move where players spawn. Usage: /set-spawn [
         reply(command, "Usage: /set-spawn <x>,<y>")
         return
     end
-    game.forces["player"].set_spawn_position(game.surfaces[1], {x = x, y = y})
+    game.forces["player"].set_spawn_position({x = x, y = y}, game.surfaces[1])
     game.print(string.format("Spawn point moved to %.1f,%.1f.", x, y))
     log(string.format("event=spawn-point, actor=%s, position=%.1f,%.1f", actor, x, y))
 end)

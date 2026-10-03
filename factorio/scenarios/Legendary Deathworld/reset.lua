@@ -607,7 +607,7 @@ local on_surface_cleared = function(event)
     -- /set-spawn moves the spawn point; a fresh map starts from the scenario's
     -- own again (the origin the crash site and spawn defences are built at --
     -- 2.0 no longer exposes the map's spawn points to Lua).
-    game.forces["player"].set_spawn_position(game.surfaces[1], {x = 0, y = 0})
+    game.forces["player"].set_spawn_position({x = 0, y = 0}, game.surfaces[1])
     game.forces["enemy"].reset()
     game.forces["enemy"].reset_evolution()
     game.reset_game_state()
