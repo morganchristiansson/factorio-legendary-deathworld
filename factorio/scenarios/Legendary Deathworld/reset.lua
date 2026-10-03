@@ -494,23 +494,33 @@ end
 
 Public.on_biter_base_built = function(event)
     local position = event.entity.position
-    if (position.x > -34 and position.x < 34 and position.y > -34 and position.y < 34) then
-        game.print({"ld-announcement", {"ld-defeat-imminent"}})
-        local nest = game.surfaces[1].find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
-        -- Both widgets live at the top of the screen, and a loss can land
-        -- while a reroll vote is still open. The vote is moot: the countdown
-        -- ends in a reset, which opens a fresh one.
-        stop_reroll_vote()
-        if storage.defeat_in then return end
-        storage.defeat_in = DEFEAT_COUNTDOWN
-        log(string.format("event=defeat, position=%.1f,%.1f, seconds=%d", position.x, position.y, DEFEAT_COUNTDOWN))
-        -- The swarm keeps fighting through the cutscene; on_cutscene_end
-        -- freezes it. Nobody to show it to (all in the gulag) -> freeze now.
-        if not watch_spawn_cutscene(nest) then
-            freeze_all()
-        end
-        update_defeat_countdown(DEFEAT_COUNTDOWN)
+    if position.x <= -34 or position.x >= 34 or position.y <= -34 or position.y >= 34 then
+        return
     end
+    -- Raised once for every biter sacrificed to build a base, so this fires
+    -- per entity, not per base. What the box holds so far -- turrets and nests
+    -- both -- is both the trigger and what the cutscene flies over.
+    local base = game.surfaces[1].find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
+    -- Three nests and worms in the box is a colony, four is a loss. There is
+    -- no clock on it: the early game lost on the first entity to land, which
+    -- ended rounds nobody had a chance in, so a swarm now has to pile up.
+    if #base <= 3 or storage.defeat_in then
+        return
+    end
+    game.print({"ld-announcement", {"ld-defeat-imminent"}})
+    -- Both widgets live at the top of the screen, and a loss can land
+    -- while a reroll vote is still open. The vote is moot: the countdown
+    -- ends in a reset, which opens a fresh one.
+    stop_reroll_vote()
+    storage.defeat_in = DEFEAT_COUNTDOWN
+    log(string.format("event=defeat, position=%.1f,%.1f, entities=%d, seconds=%d",
+        position.x, position.y, #base, DEFEAT_COUNTDOWN))
+    -- The swarm keeps fighting through the cutscene; on_cutscene_end
+    -- freezes it. Nobody to show it to (all in the gulag) -> freeze now.
+    if not watch_spawn_cutscene(base) then
+        freeze_all()
+    end
+    update_defeat_countdown(DEFEAT_COUNTDOWN)
 end
 
 local on_defeat_second = function()
