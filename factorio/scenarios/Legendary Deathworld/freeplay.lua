@@ -2,6 +2,11 @@ local util = require("util")
 local reset = require("reset")
 local jail = require("jail")
 
+-- Spawn and death respawn give the same kit. They used to differ because a
+-- second player could be killed repeatedly to farm the respawn kit -- ten
+-- magazines a cycle -- which the bioflux respawn protection now makes
+-- impractical, and magazines are craftable anyway, so the asymmetry only ever
+-- taxed the victim.
 local created_items = function()
   return
   {
@@ -9,13 +14,7 @@ local created_items = function()
     ["firearm-magazine"] = 10
   }
 end
-
-local respawn_items = function()
-  return
-  {
-    ["pistol"] = 1
-  }
-end
+local respawn_items = created_items
 
 -- Temporary effects share one self-unregistering expiry sweep: respawn
 -- protection and ping labels register it, and on_load re-arms it after saves.
@@ -123,7 +122,6 @@ end
 storage.quality = "legendary"
 storage.strafer = "behemoth-spitter"
 storage.stomper = "behemoth-spitter"
-storage.recently_reset = "false"
 storage.victory = false
 storage.nested_recently = false
 storage.nesting_spot = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0}}
@@ -140,17 +138,15 @@ end
 local on_player_respawned = function(event)
     local player = game.get_player(event.player_index)
     -- A jailed player respawns straight back in the pit, with no kit. The
-    -- teleport itself is this module's on_player_respawned handler; what
-    -- freeplay owns is the kit decision.
+    -- teleport itself is jail's own on_player_respawned handler.
     if jail.is_jailed(player.name) then
         return
     end
-    if storage.recently_reset == "true" then
-        storage.recently_reset = "false"
-        reset.on_first_respawn(player)
-    else
-        util.insert_safe(player, storage.respawn_items)
-    end
+    -- The death kit, which is the crash-site kit: they are the same function
+    -- now, so this is unconditional and the reset side -- rebuilding the crash
+    -- site -- is reset.lua's own event on its own flag. It used to branch here,
+    -- because the respawn kit held no ammo and the two could not both be given.
+    util.insert_safe(player, storage.respawn_items)
     -- Death respawns only: joins arrive via on_player_created and skip this.
     -- Protection lasts exactly as long as the bioflux effect itself: the
     -- fresh sticker's time_to_live starts at the prototype duration.
@@ -530,7 +526,6 @@ end
 local on_player_created = function(event)
   local player = game.get_player(event.player_index)
   util.insert_safe(player, storage.created_items)
-  reset.setup_first_round(player)
 end
 
 local freeplay_interface =

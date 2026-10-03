@@ -112,4 +112,4 @@ tools/sync-save <save.zip>             # apply (+ .bak backup)
   existing save zips; new `.lua` modules are picked up automatically.
 - Stop the Factorio server first (the script enforces this; `--force` overrides for local testing).
 - Verify after deploy: fresh join gets crash site + turret + reveal;
-  `/reset` twice; ordinary death gives only pistol + ammo.
+  `/reset` twice; ordinary death gives the same kit as the crash site.

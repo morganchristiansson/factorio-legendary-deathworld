@@ -624,7 +624,7 @@ local on_surface_created = function(event)
 end
 
 -- One-time setup for the very first round, run by the first created player.
-Public.setup_first_round = function(player)
+local setup_first_round = function(player)
     if storage.init_ran then return end
     storage.init_ran = true
 
@@ -641,12 +641,13 @@ Public.setup_first_round = function(player)
     end
 end
 
--- First respawn after a reset: set up the fresh round for this player.
-Public.on_first_respawn = function(player)
+-- Rebuild the crash site for the first respawn after a reset. The kit is not
+-- given here: it is the same as the ordinary death kit, so freeplay grants it
+-- on every respawn and giving it twice would hand over two pistols.
+local on_first_respawn = function(player)
     local surface = game.surfaces[1]
     Public.setup_starting_area(surface)
     game.forces["enemy"].friendly_fire = false
-    util.insert_safe(player, storage.created_items)
     -- Cleanup platforms that have no surface
     for _, platform in pairs(game.forces["player"].platforms) do
     platform.destroy(1)
@@ -702,6 +703,29 @@ end
 -- every other field, so public functions coexist here safely.
 Public.events =
 {
+    -- The first respawn after a reset is when the crash site goes back up: the
+    -- surface was wiped and nothing rebuilds it until someone spawns. The flag
+    -- is ours and only ours -- freeplay used to read it to choose a kit, and
+    -- with one kit there is nothing left to agree on.
+    [defines.events.on_player_respawned] = function(event)
+        local player = game.get_player(event.player_index)
+        if not (player and player.valid and storage.recently_reset == "true") then
+            return
+        end
+        storage.recently_reset = "false"
+        on_first_respawn(player)
+    end,
+
+    -- The first round's setup, on the first player to exist. It was a call out
+    -- of freeplay's on_player_created, which only made sense under the belief
+    -- that one module may register an event; the event_handler fans out to both
+    -- and this one's guard (storage.init_ran) is its own business.
+    [defines.events.on_player_created] = function(event)
+        local player = game.get_player(event.player_index)
+        if player and player.valid then
+            setup_first_round(player)
+        end
+    end,
   [defines.events.on_surface_created] = on_surface_created,
   [defines.events.on_pre_surface_cleared] = on_pre_surface_cleared,
   [defines.events.on_surface_cleared] = on_surface_cleared,
@@ -712,7 +736,10 @@ Public.events =
   [defines.events.on_gui_click] = on_reroll_click,
   [defines.events.on_player_joined_game] = on_reroll_join,
 }
-Public.on_init = ensure_crash_loot
+Public.on_init = function()
+    ensure_crash_loot()
+    storage.recently_reset = "false"
+end
 Public.on_configuration_changed = function() ensure_crash_loot() end
 -- Re-register the tick handler after a save/load if a reveal was in flight,
 -- since dynamic event registrations don't survive loading.
