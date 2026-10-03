@@ -2,11 +2,10 @@ local util = require("util")
 local reset = require("reset")
 local jail = require("jail")
 
--- Spawn and death respawn give the same kit. They used to differ because a
--- second player could be killed repeatedly to farm the respawn kit -- ten
--- magazines a cycle -- which the bioflux respawn protection now makes
--- impractical, and magazines are craftable anyway, so the asymmetry only ever
--- taxed the victim.
+-- The kit, given at spawn and on every death respawn. They used to differ --
+-- spawn got ten magazines, a respawn got none -- because a second player could
+-- be killed repeatedly to farm the respawn kit; the bioflux protection makes
+-- that impractical and magazines are craftable, so it only taxed the victim.
 local created_items = function()
   return
   {
@@ -14,7 +13,6 @@ local created_items = function()
     ["firearm-magazine"] = 10
   }
 end
-local respawn_items = created_items
 
 -- Temporary effects share one self-unregistering expiry sweep: respawn
 -- protection and ping labels register it, and on_load re-arms it after saves.
@@ -142,11 +140,9 @@ local on_player_respawned = function(event)
     if jail.is_jailed(player.name) then
         return
     end
-    -- The death kit, which is the crash-site kit: they are the same function
-    -- now, so this is unconditional and the reset side -- rebuilding the crash
-    -- site -- is reset.lua's own event on its own flag. It used to branch here,
-    -- because the respawn kit held no ammo and the two could not both be given.
-    util.insert_safe(player, storage.respawn_items)
+    -- The same kit a fresh spawn gets. This used to branch on the reset flag,
+    -- because a respawn kit and a spawn kit could not both be given.
+    util.insert_safe(player, storage.created_items)
     -- Death respawns only: joins arrive via on_player_created and skip this.
     -- Protection lasts exactly as long as the bioflux effect itself: the
     -- fresh sticker's time_to_live starts at the prototype duration.
@@ -528,53 +524,6 @@ local on_player_created = function(event)
   util.insert_safe(player, storage.created_items)
 end
 
-local freeplay_interface =
-{
-  get_created_items = function()
-    return storage.created_items
-  end,
-  set_created_items = function(map)
-    storage.created_items = map or error("Remote call parameter to freeplay set created items can't be nil.")
-  end,
-  get_respawn_items = function()
-    return storage.respawn_items
-  end,
-  set_respawn_items = function(map)
-    storage.respawn_items = map or error("Remote call parameter to freeplay set respawn items can't be nil.")
-  end,
-  get_disable_crashsite = function()
-    return storage.disable_crashsite
-  end,
-  set_disable_crashsite = function(bool)
-    storage.disable_crashsite = bool
-  end,
-  get_init_ran = function()
-    return storage.init_ran
-  end,
-  get_ship_items = function()
-    return storage.crashed_ship_items
-  end,
-  set_ship_items = function(map)
-    storage.crashed_ship_items = map or error("Remote call parameter to freeplay set created items can't be nil.")
-  end,
-  get_debris_items = function()
-    return storage.crashed_debris_items
-  end,
-  set_debris_items = function(map)
-    storage.crashed_debris_items = map or error("Remote call parameter to freeplay set respawn items can't be nil.")
-  end,
-  get_ship_parts = function()
-    return storage.crashed_ship_parts
-  end,
-  set_ship_parts = function(parts)
-    storage.crashed_ship_parts = parts or error("Remote call parameter to freeplay set ship parts can't be nil.")
-  end
-}
-
-if not remote.interfaces["freeplay"] then
-  remote.add_interface("freeplay", freeplay_interface)
-end
-
 local is_debug = function()
   local surface = game.surfaces.nauvis
   local map_gen_settings = surface.map_gen_settings
@@ -617,7 +566,6 @@ freeplay.events =
 
 freeplay.on_configuration_changed = function()
   storage.created_items = storage.created_items or created_items()
-  storage.respawn_items = storage.respawn_items or respawn_items()
   storage.pings = storage.pings or {}
 
   if not storage.init_ran then
@@ -642,7 +590,6 @@ end
 freeplay.on_init = function()
   game.allow_tip_activation = true
   storage.created_items = created_items()
-  storage.respawn_items = respawn_items()
   storage.pings = {}
   -- Baseline asteroids-only filter is already registered at module scope.
   storage.apex_spitter = nil
