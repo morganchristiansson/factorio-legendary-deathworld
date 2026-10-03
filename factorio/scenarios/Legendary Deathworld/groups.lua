@@ -194,8 +194,28 @@ local function get_temporary_table()
     return storage.temporary_group
 end
 
+local TEMPORARY_GROUPS = {[GULAG_GROUP_NAME] = true, [FREEZE_GROUP_NAME] = true}
+
 Public.save_group = function(name, group_name)
     get_temporary_table()[name] = group_name
+end
+
+-- The way into a temporary group, from either command: remember where the
+-- player is now, then move them. Only the way *in* is remembered -- entering one
+-- temporary group from the other leaves the saved group alone, so freeze then
+-- jail then /free lands back in freeze, and jail then freeze then /unfreeze
+-- lands where they were taken from.
+Public.enter_temporary = function(name, group_name)
+    local player = game.get_player(name)
+    if not player then
+        return nil, "No such player: " .. tostring(name)
+    end
+    local group = player.permission_group and player.permission_group.name
+    if not TEMPORARY_GROUPS[group] then
+        Public.save_group(name, group or DEFAULT_GROUP_NAME)
+    end
+    set_group(name, group_name)
+    return group
 end
 
 Public.restore_group = function(name)
@@ -206,9 +226,10 @@ Public.restore_group = function(name)
 end
 
 -----------------------------------------------------------------------
--- Freeze: the frozen permissions without leaving the map. The gulag outranks it,
--- so a jailed player cannot be frozen -- that check is the group they are in,
--- not the jail record, which is what keeps this module clear of the gulag.
+-- Freeze: the frozen permissions without leaving the map. A jailed player may
+-- be frozen, and the gulag handler sends them back out of the pit -- one
+-- handler owns every physical consequence of a group change, and this only
+-- changes the group.
 Public.is_frozen = function(name)
     local player = game.get_player(name)
     return player ~= nil and player.valid and player.permission_group ~= nil
@@ -220,17 +241,12 @@ Public.freeze = function(name)
     if not target then
         return false, "No such player: " .. tostring(name)
     end
-    local group = target.permission_group and target.permission_group.name
-    if group == GULAG_GROUP_NAME then
-        return false, name .. " is jailed"
-    end
-    if group == FREEZE_GROUP_NAME then
+    if Public.is_frozen(name) then
         return false, name .. " is already frozen"
     end
-    Public.save_group(name, group or DEFAULT_GROUP_NAME)
-    set_group(name, FREEZE_GROUP_NAME)
+    local previous = Public.enter_temporary(name, FREEZE_GROUP_NAME)
     game.print(name .. " is now frozen.")
-    log(string.format("event=freeze, target=%s, source_group=%s", name, group or "none"))
+    log(string.format("event=freeze, target=%s, source_group=%s", name, previous or "none"))
     return true
 end
 

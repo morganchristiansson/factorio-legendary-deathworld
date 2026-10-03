@@ -166,6 +166,19 @@ local teleport_to_gulag = function(player)
     player.exit_remote_view()
 end
 
+-- Out of the pit, back to where they were taken from.
+local teleport_from_gulag = function(player, data)
+    local surface = game.surfaces[data.surface_index] or game.surfaces[1]
+    local position = surface.find_non_colliding_position("character", data.position, 128, 1)
+        or game.forces["player"].get_spawn_position(surface)
+    if player.character then
+        player.character.teleport(position, surface.name)
+    else
+        player.teleport(position, surface.name)
+    end
+    player.exit_remote_view()
+end
+
 -----------------------------------------------------------------------
 -- Sends a player to the gulag. Returns true on success, false plus a
 -- reason string otherwise. actor names who ordered the jailing.
@@ -179,12 +192,9 @@ Public.jail = function(actor, name, reason)
         return false, target.name .. " is already jailed"
     end
 
-    -- Group first, teleport second: a prisoner in the pit who still has their
-    -- own permissions is not jailed at all. Nothing is recorded until the
-    -- write has landed, so a refused one leaves no half-jailed state.
+    -- The record first: the group change is queued and lands on a tick later,
+    -- and the handler that puts them in the pit reads this.
     local source_group = target.permission_group
-    groups.set_group(target.name, GULAG_GROUP_NAME)
-    groups.save_group(target.name, source_group and source_group.name or "Default")
     jailed[target.name] =
     {
         surface_index = target.physical_surface_index,
@@ -192,21 +202,20 @@ Public.jail = function(actor, name, reason)
         actor = actor,
         reason = reason,
     }
-    teleport_to_gulag(target)
+    groups.enter_temporary(target.name, GULAG_GROUP_NAME)
 
     local message = string.format("%s has been jailed by %s. Reason: %s", target.name, actor, reason)
     game.print(message)
-    target.clear_console()
-    target.print(message)
+    -- No console clear: the pit is for talking, not for silencing.
     log(string.format("event=jail, actor=%s, target=%s, reason=%s, source_group=%s, surface=%s, admin=%s",
         actor, target.name, reason, source_group and source_group.name or "none",
         target.surface.name, tostring(target.admin)))
-    -- No group read-back here: LuaPlayer.permission_group lags a tick behind
-    -- the add, so a same-tick check would only ever see the pre-jail group.
     return true
 end
 
--- Returns a jailed player to their previous surface and permissions.
+-- Returns a jailed player to their previous surface and permissions. The
+-- teleport is not here: leaving the gulag group is what sends them out, and
+-- that handler clears the record.
 Public.free = function(actor, name)
     local jailed = get_jailed_table()
     local data = jailed[name]
@@ -214,33 +223,15 @@ Public.free = function(actor, name)
     if not data or not target then
         return false, "No jailed player: " .. tostring(name)
     end
-    -- Restore the group they had before being jailed, from the shared
-    -- temporary-group table. By name, not id: ids are unreliable across
-    -- sessions. Falls back to Default when there is no entry.
+    data.releasing = actor
     local previous = groups.restore_group(name)
-    jailed[name] = nil
 
-    local surface = game.surfaces[data.surface_index] or game.surfaces[1]
-    local position = surface.find_non_colliding_position("character", data.position, 128, 1)
-        or game.forces["player"].get_spawn_position(surface)
-    if target.character then
-        target.character.teleport(position, surface.name)
-    else
-        target.teleport(position, surface.name)
-    end
-
-    local message = string.format("%s was released from jail by %s.", name, actor)
-    game.print(message)
-    -- No read-back here, same reason as jail(): LuaPlayer.permission_group
-    -- lags a tick, so it only reports the pre-release group.
+    game.print(string.format("%s was released from jail by %s.", name, actor))
     log(string.format("event=release, actor=%s, target=%s, restored_group=%s", actor, name, previous))
     return true
 end
 
 -----------------------------------------------------------------------
-
------------------------------------------------------------------------
-
 -- Respawn hook, routed from freeplay.lua (one handler per event):
 -- jailed players respawn straight back into the pit, without kit.
 Public.on_player_respawned = function(player)
@@ -248,10 +239,45 @@ Public.on_player_respawned = function(player)
 end
 
 -----------------------------------------------------------------------
--- Re-apply jail state on join: permission group membership normally
--- persists in the save, but re-adding costs nothing and heals any drift.
+-- Every physical consequence of a group change, in one place. The commands
+-- only change groups; whatever that does to a player's body happens here, so
+-- jailing a frozen player, freezing a jailed one and both ways out of the pit
+-- are the same code path rather than one per command.
+--
+-- What matters is where the player ended up, not which group the event names:
+-- being added to trusted on the way out of the gulag arrives as add-player for
+-- trusted. other_player_index is who moved -- player_index is who did the
+-- editing, and is nil when a mod did it, which is always here. Reading
+-- permission_group is safe this once: the event fires directly after the edit.
 Public.events =
 {
+    [defines.events.on_permission_group_edited] = function(event)
+        if event.type ~= "add-player" and event.type ~= "remove-player" then
+            return
+        end
+        local moved = game.get_player(event.other_player_index)
+        if not moved then
+            return
+        end
+        local jailed = get_jailed_table()
+        local data = jailed[moved.name]
+        local group = moved.permission_group and moved.permission_group.name
+        if group == GULAG_GROUP_NAME then
+            if data then
+                teleport_to_gulag(moved)
+            end
+        elseif data then
+            -- Out of the pit, whether that was /free or being frozen: back to
+            -- where they were taken from either way.
+            teleport_from_gulag(moved, data)
+            jailed[moved.name] = nil
+        elseif event.type == "add-player" then
+            -- A freeze has no body to move, but the map view is the same
+            -- nuisance it is in the pit.
+            moved.exit_remote_view()
+        end
+    end,
+
     [defines.events.on_player_joined_game] = function(event)
         local player = game.get_player(event.player_index)
         if not player or not Public.is_jailed(player.name) then
