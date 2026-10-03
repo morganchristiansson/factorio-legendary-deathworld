@@ -161,6 +161,26 @@ commands.add_command("close-vote", "Ends the reroll vote now and keeps this map.
     end
 end)
 
+-- The engine puts players at the force's spawn point, so moving that point is
+-- the whole of it: no per-player teleport, and /reset hands it back to the map
+-- (see reset.lua).
+commands.add_command("set-spawn", "Move where players spawn. Usage: /set-spawn [gps=]<x>,<y>", function(command)
+    local parameter, actor = admin_target(command, "/set-spawn [gps=]<x>,<y>")
+    if not parameter then
+        return
+    end
+    -- Copied out of a map view with the tag included, or typed bare: both work.
+    local x, y = parameter:gsub("^%s*gps=%s*", ""):match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)%s*$")
+    x, y = tonumber(x), tonumber(y)
+    if not x or not y then
+        reply(command, "Usage: /set-spawn <x>,<y>")
+        return
+    end
+    game.forces["player"].set_spawn_position(game.surfaces[1], {x = x, y = y})
+    game.print(string.format("Spawn point moved to %.1f,%.1f.", x, y))
+    log(string.format("event=spawn-point, actor=%s, position=%.1f,%.1f", actor, x, y))
+end)
+
 commands.add_command("reset", "Resets map. Usage: /reset [seed]", function(command)
     local actor = "server"
     if command.player_index then

@@ -604,6 +604,9 @@ local on_surface_cleared = function(event)
     game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 1
     game.map_settings.enemy_evolution.time_factor = 0.00004
     game.forces["player"].reset()
+    -- /set-spawn moves the spawn point; a fresh map starts from the map's own
+    -- again, so the override does not outlive the round it was set for.
+    game.forces["player"].set_spawn_position(game.surfaces[1], game.surfaces[1].spawn_points[1].position)
     game.forces["enemy"].reset()
     game.forces["enemy"].reset_evolution()
     game.reset_game_state()
