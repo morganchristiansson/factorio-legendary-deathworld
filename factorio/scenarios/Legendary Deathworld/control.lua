@@ -169,11 +169,14 @@ commands.add_command("set-spawn", "Move where players spawn. Usage: /set-spawn [
     if not parameter then
         return
     end
-    -- Copied out of a map view with the tag included, or typed bare: both work.
-    local x, y = parameter:gsub("^%s*gps=%s*", ""):match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)%s*$")
+    -- Typed bare (34.4,-43.2) or pasted out of a map view (gps=34.4,-43.2,
+    -- [gps=...], with a "copied" tag behind it): everything but digits, sign
+    -- and separator is dropped, and what is left has to be exactly one "x,y".
+    local cleaned = parameter:gsub("[^-%d%.%,]", " ")
+    local x, y = cleaned:match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)%s*$")
     x, y = tonumber(x), tonumber(y)
     if not x or not y then
-        reply(command, "Usage: /set-spawn <x>,<y>")
+        reply(command, "Usage: /set-spawn [gps=]<x>,<y>")
         return
     end
     game.forces["player"].set_spawn_position({x = x, y = y}, game.surfaces[1])
