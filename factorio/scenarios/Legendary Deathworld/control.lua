@@ -17,22 +17,25 @@ local function reply(command, message)
     end
 end
 
--- Admin-only in game, console always allowed, and the trimmed <player>
--- argument -- nil after replying with why, so callers can just return.
+-- Admin-only in game, console always allowed: returns the trimmed parameter
+-- and who typed it ("server" from the console), or nil after replying with why
+-- not, so callers can just return.
 local function admin_target(command, usage)
+    local actor = "server"
     if command.player_index then
         local player = game.get_player(command.player_index)
         if not player.admin then
             player.print("Only admins can use this command.")
             return nil
         end
+        actor = player.name
     end
-    local target = (command.parameter or ""):match("^%s*(.-)%s*$")
-    if target == "" then
+    local parameter = (command.parameter or ""):match("^%s*(.-)%s*$")
+    if parameter == "" then
         reply(command, "Usage: " .. usage)
         return nil
     end
-    return target
+    return parameter, actor
 end
 
 if script.active_mods["space-age"] then
@@ -42,22 +45,17 @@ else
 end
 
 commands.add_command("jail", "Send a player to the gulag. Usage: /jail <player> <reason>", function(command)
-    local actor = "server"
-    if command.player_index then
-        local player = game.get_player(command.player_index)
-        if not player.admin then
-            player.print("Only admins can use this command.")
-            return
-        end
-        actor = player.name
+    local parameter, actor = admin_target(command, "/jail <player> <reason>")
+    if not parameter then
+        return
     end
     local params = {}
-    for word in string.gmatch(command.parameter or "", "%S+") do
+    for word in string.gmatch(parameter, "%S+") do
         params[#params + 1] = word
     end
     local target = table.remove(params, 1)
     local reason = table.concat(params, " ")
-    if not target or reason == "" then
+    if reason == "" then
         reply(command, "Usage: /jail <player> <reason>")
         return
     end
@@ -67,22 +65,12 @@ commands.add_command("jail", "Send a player to the gulag. Usage: /jail <player> 
     end
 end)
 
-commands.add_command("free", "Release a player from the gulag. Usage: /free <player>", function(command)
-    local actor = "server"
-    if command.player_index then
-        local player = game.get_player(command.player_index)
-        if not player.admin then
-            player.print("Only admins can use this command.")
-            return
-        end
-        actor = player.name
-    end
-    local target = command.parameter
-    if not target or target == "" then
-        reply(command, "Usage: /free <player>")
+commands.add_command("release", "Let a jailed or frozen player go back to the group they had. Usage: /release <player>", function(command)
+    local target, actor = admin_target(command, "/release <player>")
+    if not target then
         return
     end
-    local ok, err = jail.free(actor, target)
+    local ok, err = groups.release(actor, target)
     if not ok then
         reply(command, err)
     end
@@ -94,17 +82,6 @@ commands.add_command("freeze", "Restrict a player to spectator permissions, keep
         return
     end
     local ok, err = groups.freeze(target)
-    if not ok then
-        reply(command, err)
-    end
-end)
-
-commands.add_command("unfreeze", "Give a frozen player their permissions back. Usage: /unfreeze <player>", function(command)
-    local target = admin_target(command, "/unfreeze <player>")
-    if not target then
-        return
-    end
-    local ok, err = groups.unfreeze(target)
     if not ok then
         reply(command, err)
     end

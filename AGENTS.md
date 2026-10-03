@@ -11,8 +11,8 @@ server data under `factorio/`. The active scenario is **Legendary Deathworld**.
 | `freeplay.lua` | Game lifecycle: new-player kit, ordinary respawns, in-game events (nesting, research logging, victory detection) |
 | `reset.lua` | Map lifecycle: seed, wipe, staged map reveal, fresh-round setup, surface events |
 | `welcome.lua` | Join window shown to players |
-| `jail.lua` | Gulag: jail surface, jail/free commands, escape prevention |
-| `groups.lua` | Permission groups: the tiers, the temporary ones, trust/freeze commands |
+| `jail.lua` | Gulag: the pit surface, the jail records, escape prevention |
+| `groups.lua` | Permission groups and their commands: `/jail`, `/release`, `/freeze`, `/trust` |
 
 **Boundary rule:** one-time setup/reset events belong in `reset.lua`; anything
 that happens during play stays in `freeplay.lua`. Player kit (`created_items`,

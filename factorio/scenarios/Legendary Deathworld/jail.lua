@@ -213,23 +213,9 @@ Public.jail = function(actor, name, reason)
     return true
 end
 
--- Returns a jailed player to their previous surface and permissions. The
--- teleport is not here: leaving the gulag group is what sends them out, and
--- that handler clears the record.
-Public.free = function(actor, name)
-    local jailed = get_jailed_table()
-    local data = jailed[name]
-    local target = game.get_player(name)
-    if not data or not target then
-        return false, "No jailed player: " .. tostring(name)
-    end
-    data.releasing = actor
-    local previous = groups.restore_group(name)
-
-    game.print(string.format("%s was released from jail by %s.", name, actor))
-    log(string.format("event=release, actor=%s, target=%s, restored_group=%s", actor, name, previous))
-    return true
-end
+-- /jail and /release both live in groups.lua: both are just a group change,
+-- and the handler below is what puts a player in the pit or walks them out of
+-- it. This module is the pit and the records that handler needs.
 
 -----------------------------------------------------------------------
 -- Respawn hook, routed from freeplay.lua (one handler per event):

@@ -22,7 +22,7 @@ end
 -- Engine stubs -------------------------------------------------------------
 -- add_player refuses when the caller lacks edit_permission_group, which is the
 -- failure the commands have to survive; stub.refuse_adds turns that on.
-local stub = {refuse_adds = false}
+local stub = {refuse_adds = false, printed = {}}
 local stub_groups = {}
 local players = {}
 local event_handlers = {}
@@ -155,7 +155,7 @@ _G.game = {
         end
         return players[who]
     end,
-    print = function() end,
+    print = function(message) table.insert(stub.printed, tostring(message)) end,
     is_multiplayer = function() return false end,
     surfaces = {[1] = nauvis, ["gulag"] = gulag},
     forces = {player = {get_spawn_position = function() return {0, 0} end}},
@@ -187,6 +187,14 @@ end
 -- Group changes are queued and land on a tick -- a command's client may not
 -- edit a group -- so the tests drive one, exactly like the game does. That tick
 -- is what raises on_permission_group_edited, which is what moves the players.
+-- Everything the commands said since the last call, as one line: a chain that
+-- should print one message and a half prints two, and this catches that.
+local function said()
+    local lines = table.concat(stub.printed, " | ")
+    stub.printed = {}
+    return lines
+end
+
 local function run_tick()
     for _, handler in ipairs(nth_tick_handlers[1] or {}) do
         handler()
@@ -198,19 +206,21 @@ end
 -- moving them to a new group instead would strand them in permissions nothing
 -- restores out of.
 make_group("spectate")
-groups.ensure_groups()
+groups.on_init()
 check("gulag group created", stub_groups.gulag ~= nil, true)
 check("the old spectate group was renamed in place", stub_groups.spectate.name, "freeze")
 
 -- Freeze / unfreeze --------------------------------------------------------
 add_player("bob", "Default")
 check("freeze succeeds", groups.freeze("bob"), true)
+check("freezing says one line", said(), "bob is now frozen.")
 run_tick()
 check("frozen into the freeze group", players.bob.permission_group.name, "freeze")
 check("saved home group", storage.temporary_group.bob, "Default")
 check("freeze is idempotent-refused", groups.freeze("bob"), false)
 check("trust is refused while frozen", groups.trust("bob"), false)
-check("unfreeze", groups.unfreeze("bob"), true)
+check("release bob", groups.release("morganc", "bob"), true)
+check("releasing from freeze says one line", said(), "bob is no longer frozen.")
 run_tick()
 check("bob back to Default", players.bob.permission_group.name, "Default")
 check("entry cleared", storage.temporary_group.bob, nil)
@@ -221,18 +231,21 @@ add_player("admin2", "trusted")
 check("freeze a trusted player", groups.freeze("admin2"), true)
 run_tick()
 check("saved trusted", storage.temporary_group.admin2, "trusted")
-check("unfreeze", groups.unfreeze("admin2"), true)
+check("release admin2", groups.release("morganc", "admin2"), true)
+said()
 run_tick()
 check("trusted restored", players.admin2.permission_group.name, "trusted")
 check("entry cleared", storage.temporary_group.admin2, nil)
-check("unfreeze is refused twice", groups.unfreeze("admin2"), false)
+check("release is refused twice", groups.release("morganc", "admin2"), false)
 
 check("frozen group keeps console chat", stub_groups.spectate.allows_action("write_to_console"), true)
 check("frozen group denies walking", stub_groups.spectate.allows_action("walk"), false)
 
 -- The gulag: the group change lands, and the event is what puts them in the pit
 add_player("dave", "trusted")
+said()
 check("jail dave", jail.jail("morganc", "dave", "testing"), true)
+check("jailing says one line", said(), "dave has been jailed by morganc. Reason: testing")
 check("nothing has moved yet", players.dave.teleported_to, nil)
 run_tick()
 check("jailed into the gulag group", players.dave.permission_group.name, "gulag")
@@ -240,20 +253,22 @@ check("and into the pit", players.dave.teleported_to, "gulag")
 check("the record is kept until they leave", storage.jailed.dave ~= nil, true)
 
 -- /free announces immediately and the event does the walking
-check("free dave", jail.free("morganc", "dave"), true)
+check("release dave", groups.release("morganc", "dave"), true)
+check("releasing from jail says one line", said(), "dave was released from jail by morganc.")
 check("still in the pit until the group lands", players.dave.teleported_to, "gulag")
 run_tick()
 check("back to trusted", players.dave.permission_group.name, "trusted")
 check("back to where they were taken from", players.dave.teleported_to, "nauvis")
 check("the record is cleared on the way out", storage.jailed.dave, nil)
-check("free is refused twice", jail.free("morganc", "dave"), false)
+check("release is refused once they are out", groups.release("morganc", "dave"), false)
 
 -- The admin tier survives a jail round trip, which is what the temporary-group
 -- table is for: a jailed admin comes back as an admin, never as a player.
-add_player("erin", "server")
+add_player("erin", "gulag")
 storage.jailed = {erin = {surface_index = 1, position = {x = 3, y = 4}}}
 storage.temporary_group.erin = "server"
-check("free erin", jail.free("server", "erin"), true)
+check("release erin", groups.release("server", "erin"), true)
+said()
 run_tick()
 check("server group restored", players.erin.permission_group.name, "server")
 
@@ -263,15 +278,17 @@ check("server group restored", players.erin.permission_group.name, "server")
 add_player("frank", "Default")
 storage.jailed = {}
 check("freeze frank", groups.freeze("frank"), true)
+said()
 run_tick()
 check("frank starts frozen", players.frank.permission_group.name, "freeze")
 storage.jailed = {}
 check("jail frank", jail.jail("morganc", "frank", "griefer"), true)
+check("jailing over a freeze says one line", said(), "frank has been jailed by morganc. Reason: griefer")
 run_tick()
 check("jailed over the top of the freeze", players.frank.permission_group.name, "gulag")
 check("and put in the pit", players.frank.teleported_to, "gulag")
 check("freeze into jail kept the original group", storage.temporary_group.frank, "Default")
-check("free frank", jail.free("morganc", "frank"), true)
+check("release frank", groups.release("morganc", "frank"), true)
 run_tick()
 check("out of the pit", players.frank.teleported_to, "nauvis")
 check("back to Default, the group they came from", players.frank.permission_group.name, "Default")
@@ -279,16 +296,22 @@ check("back to Default, the group they came from", players.frank.permission_grou
 -- Jailed, then frozen: freezing a prisoner walks them out of the pit, and the
 -- jail record goes with them.
 add_player("grace", "trusted")
+said()
 check("jail grace", jail.jail("morganc", "grace", "griefer"), true)
+said()
 run_tick()
 check("grace is in the pit", players.grace.teleported_to, "gulag")
 check("freezing a prisoner is allowed now", groups.freeze("grace"), true)
+-- One line, and it is not a release: the prisoner's exit from the pit is the
+-- handler's doing and is announced by whichever command caused it.
+check("freezing a prisoner says one line, and no release", said(), "grace is now frozen.")
 run_tick()
 check("frozen instead of jailed", players.grace.permission_group.name, "freeze")
 check("and out of the pit", players.grace.teleported_to, "nauvis")
 check("with the jail record cleared", storage.jailed.grace, nil)
 check("the group to restore is untouched", storage.temporary_group.grace, "trusted")
-check("unfreeze returns them to trusted", groups.unfreeze("grace"), true)
+check("release returns them to trusted", groups.release("morganc", "grace"), true)
+said()
 run_tick()
 check("grace back to trusted", players.grace.permission_group.name, "trusted")
 
@@ -304,9 +327,11 @@ check("spectate mode flag clears", groups.is_spectate_on(), false)
 
 -- /trust only applies to the baseline groups -------------------------------
 check("trust bob", groups.trust("bob"), true)
+said()
 run_tick()
 check("bob is trusted", players.bob.permission_group.name, "trusted")
 check("untrust bob", groups.untrust("bob"), true)
+said()
 run_tick()
 check("bob back in Default", players.bob.permission_group.name, "Default")
 check("untrust is refused for a Default player", groups.untrust("bob"), false)
@@ -316,11 +341,14 @@ check("untrust is refused for a Default player", groups.untrust("bob"), false)
 -- records added=false instead.
 stub.refuse_adds = true
 check("freeze still reports success", groups.freeze("bob"), true)
+said()
 check("a refused freeze still saves the group to restore", storage.temporary_group.bob, "Default")
 run_tick()
 check("a refused freeze moves nobody", players.bob.permission_group.name, "Default")
 stub.refuse_adds = false
 check("and the entry is still there to restore", storage.temporary_group.bob, "Default")
+
+check("no announcement was left over", said(), "")
 
 print(failures == 0 and "ok" or (failures .. " failure(s)"))
 os.exit(failures == 0 and 0 or 1)

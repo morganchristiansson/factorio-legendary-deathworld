@@ -250,17 +250,29 @@ Public.freeze = function(name)
     return true
 end
 
-Public.unfreeze = function(name)
+-- The way out of either temporary group: put the player back where they came
+-- from. What that does to their body is not this module's business -- leaving
+-- the gulag is what walks them out of the pit, and the gulag handler is the
+-- only place that knows about the pit. Which group they were in only decides
+-- how it is announced.
+Public.release = function(actor, name)
     local target = game.get_player(name)
     if not target then
         return false, "No such player: " .. tostring(name)
     end
-    if not Public.is_frozen(name) then
-        return false, name .. " is not frozen"
+    local group = target.permission_group and target.permission_group.name
+    if group == FREEZE_GROUP_NAME then
+        local previous = Public.restore_group(name)
+        game.print(name .. " is no longer frozen.")
+        log(string.format("event=unfreeze, target=%s, actor=%s, restored_group=%s", name, actor, previous))
+        return true
+    end
+    if group ~= GULAG_GROUP_NAME then
+        return false, name .. " is neither jailed nor frozen"
     end
     local previous = Public.restore_group(name)
-    game.print(name .. " is no longer frozen.")
-    log(string.format("event=unfreeze, target=%s, restored_group=%s", name, previous))
+    game.print(string.format("%s was released from jail by %s.", name, actor))
+    log(string.format("event=release, target=%s, actor=%s, restored_group=%s", name, actor, previous))
     return true
 end
 
