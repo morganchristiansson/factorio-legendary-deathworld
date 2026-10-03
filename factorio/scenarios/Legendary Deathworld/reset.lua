@@ -376,48 +376,21 @@ end
 -----------------------------------------------------------------------
 -- Loss: the enemy nest lands on the spawn point. Instead of resetting
 -- mid-tick we cut everyone to a flyover of what they built (shaped like the
--- crash-site intro everyone knows) and stop the fight once the flyover ends
--- (entities show "disabled by script", the same lever Biter Battles pulls on
--- a lost match), then reset DEFEAT_COUNTDOWN seconds later.
+-- crash-site intro everyone knows) and reset DEFEAT_COUNTDOWN seconds
+-- later. Clearing the nests in the box before that lands cancels the whole
+-- thing -- the round goes back on, and a colony that comes back starts it
+-- again.
 local DEFEAT_COUNTDOWN = 60
+-- Three nests and worms in the box is a colony, four is a loss.
+local DEFEAT_BASE_COUNT = 3
 local SPAWN_BOX = {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}}
 
--- Entity "type" is the only generic axis in EntitySearchFilters, and this
--- build splits it: turrets are "ammo-turret"/"electric-turret"/
--- "fluid-turret"/"artillery-turret"/"turret", and the worm enemies are
--- "unit"/"spider-unit"/"segmented-unit"/"unit-spawner". There is no single
--- generic turret type and no prototypes.turret here, so both families are
--- derived from the prototypes.
-local TURRET_TYPES, ENEMY_TYPES = {}, {}
-for _, prototype in pairs(prototypes.entity) do
-    if prototype.type:find("turret") then
-        TURRET_TYPES[#TURRET_TYPES + 1] = prototype.type
-    elseif prototype.type:find("unit") then
-        ENEMY_TYPES[#ENEMY_TYPES + 1] = prototype.type
-    end
+-- What the box holds so far -- turrets and nests both -- is both the trigger
+-- and what the cutscene flies over.
+local base_in_spawn_box = function()
+    return game.surfaces[1].find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
 end
 
-local FREEZE_FILTERS = {
-    -- The swarm and its nests stop producing, every turret stops shooting:
-    -- the nest's own worm turrets are what kills the base during the pause,
-    -- and a stray player turret can shoot the nest apart.
-    {type = ENEMY_TYPES, force = "enemy"},
-    {type = TURRET_TYPES},
-}
-
-local freeze_all = function()
-    local matched = 0
-    for _, filter in ipairs(FREEZE_FILTERS) do
-        local entities = game.surfaces[1].find_entities_filtered(filter)
-        matched = matched + #entities
-        for _, entity in pairs(entities) do
-            entity.disabled_by_script = true
-        end
-    end
-    return matched
-end
-
--- Returns true when at least one player got the camera.
 local watch_spawn_cutscene = function(nest)
     -- Crash-site intro, retargeted: glide onto what they built, then pull
     -- back. Worm turrets are skipped -- the nests are
@@ -435,16 +408,14 @@ local watch_spawn_cutscene = function(nest)
     -- Two steps: glide in on the nest at close zoom, then pull back to the
     -- wide shot fast and linger there -- that long wait is where players
     -- watch the swarm come apart, since the enemies keep fighting through
-    -- the cutscene (freeze_all waits for it to end).
+    -- the cutscene.
     local waypoints = {
         {position = center, zoom = 2, transition_time = 200, time_to_wait = 60},
         {position = center, zoom = 0.5, transition_time = 125, time_to_wait = 480},
     }
-    local shown = false
     for _, player in pairs(game.connected_players) do
         if player.character and player.character.valid and not jail.is_jailed(player.name) then
             player.set_controller{type = defines.controllers.cutscene, start_zoom = 2, waypoints = waypoints}
-            shown = true
             -- Same hint vanilla shows on the crash-site cutscene; TAB exits.
             -- Reused when still present: a second loss while the cutscene
             -- never ended threw "already present in the parent element",
@@ -454,7 +425,6 @@ local watch_spawn_cutscene = function(nest)
             end
         end
     end
-    return shown
 end
 
 local exit_cutscene = function(player)
@@ -474,12 +444,6 @@ local on_cutscene_end = function(event)
     local player = game.get_player(event.player_index)
     local hint = player and player.valid and player.gui.screen["ld_skip_hint"]
     if hint then hint.destroy() end
-    -- Freeze once the last player is out of the cutscene (skips count).
-    if not storage.defeat_in then return end
-    for _, other in pairs(game.connected_players) do
-        if other.controller_type == defines.controllers.cutscene then return end
-    end
-    freeze_all()
 end
 
 -- Shared by the trigger below and control.lua's /defeat test command, which
@@ -500,11 +464,11 @@ Public.on_biter_base_built = function(event)
     -- Raised once for every biter sacrificed to build a base, so this fires
     -- per entity, not per base. What the box holds so far -- turrets and nests
     -- both -- is both the trigger and what the cutscene flies over.
-    local base = game.surfaces[1].find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
+    local base = base_in_spawn_box()
     -- Three nests and worms in the box is a colony, four is a loss. There is
     -- no clock on it: the early game lost on the first entity to land, which
     -- ended rounds nobody had a chance in, so a swarm now has to pile up.
-    if #base <= 3 or storage.defeat_in then
+    if #base <= DEFEAT_BASE_COUNT or storage.defeat_in then
         return
     end
     game.print({"ld-announcement", {"ld-defeat-imminent"}})
@@ -515,16 +479,35 @@ Public.on_biter_base_built = function(event)
     storage.defeat_in = DEFEAT_COUNTDOWN
     log(string.format("event=defeat, position=%.1f,%.1f, entities=%d, seconds=%d",
         position.x, position.y, #base, DEFEAT_COUNTDOWN))
-    -- The swarm keeps fighting through the cutscene; on_cutscene_end
-    -- freezes it. Nobody to show it to (all in the gulag) -> freeze now.
-    if not watch_spawn_cutscene(base) then
-        freeze_all()
-    end
+    -- The swarm keeps fighting through the cutscene and after it: nothing is
+    -- frozen, the round is simply on the clock.
+    watch_spawn_cutscene(base)
     update_defeat_countdown(DEFEAT_COUNTDOWN)
+end
+
+-- Nests cleared before the countdown ran out: the loss is off and everyone the
+-- cutscene took gets their character back. No marker of our own -- a colony
+-- that comes back runs the trigger above from scratch, cutscene included.
+local cancel_defeat = function(base)
+    storage.defeat_in = nil
+    stop_defeat_countdown()
+    for _, player in pairs(game.connected_players) do
+        exit_cutscene(player)
+    end
+    game.print({"ld-announcement", {"ld-defeat-cancelled"}})
+    log(string.format("event=defeat-cancelled, entities=%d", base))
 end
 
 local on_defeat_second = function()
     if not storage.defeat_in then return end
+    -- Read on the second rather than off the nest events, so a colony cleared
+    -- by anything -- nests, worms, the turrets around them -- cancels just as
+    -- well, at most a second late.
+    local base = base_in_spawn_box()
+    if #base <= DEFEAT_BASE_COUNT then
+        cancel_defeat(#base)
+        return
+    end
     storage.defeat_in = storage.defeat_in - 1
     if storage.defeat_in > 0 then
         update_defeat_countdown(storage.defeat_in)
