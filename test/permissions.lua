@@ -112,6 +112,7 @@ _G.defines = {
         on_tick = 1, on_player_joined_game = 2, on_player_changed_surface = 3,
         on_singleplayer_init = 4, on_player_created = 5,
         on_permission_group_edited = 6,
+        on_player_respawned = 7,
     },
 }
 _G.storage = {}
@@ -335,6 +336,18 @@ said()
 run_tick()
 check("bob back in Default", players.bob.permission_group.name, "Default")
 check("untrust is refused for a Default player", groups.untrust("bob"), false)
+
+-- Respawning in the pit: jail registers the event itself now, the way the
+-- event_handler fans it out, so freeplay only decides about the kit.
+add_player("heidi", "gulag")
+storage.jailed = {heidi = {surface_index = 1, position = {x = 3, y = 4}}}
+local respawn = event_handlers[defines.events.on_player_respawned]
+check("jail registers on_player_respawned itself", respawn ~= nil, true)
+check("a jailed player respawns back in the pit", (function()
+    players.heidi.teleported_to = nil
+    respawn{player_index = players.heidi.index}
+    return players.heidi.teleported_to
+end)(), "gulag")
 
 -- A refused write is visible only in the log: the command has already told the
 -- admin it worked, because a queued write cannot report back. The apply

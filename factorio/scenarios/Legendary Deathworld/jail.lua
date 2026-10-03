@@ -218,13 +218,6 @@ end
 -- it. This module is the pit and the records that handler needs.
 
 -----------------------------------------------------------------------
--- Respawn hook, routed from freeplay.lua (one handler per event):
--- jailed players respawn straight back into the pit, without kit.
-Public.on_player_respawned = function(player)
-    teleport_to_gulag(player)
-end
-
------------------------------------------------------------------------
 -- Every physical consequence of a group change, in one place. The commands
 -- only change groups; whatever that does to a player's body happens here, so
 -- jailing a frozen player, freezing a jailed one and both ways out of the pit
@@ -271,6 +264,13 @@ Public.events =
         end
         groups.set_group(player.name, GULAG_GROUP_NAME)
         teleport_to_gulag(player)
+    end,
+
+    [defines.events.on_player_respawned] = function(event)
+        local player = game.get_player(event.player_index)
+        if player and Public.is_jailed(player.name) then
+            teleport_to_gulag(player)
+        end
     end,
 
     -- Escape prevention: anything that moves a jailed player off the

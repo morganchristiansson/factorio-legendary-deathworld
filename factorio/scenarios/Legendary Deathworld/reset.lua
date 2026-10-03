@@ -698,9 +698,6 @@ Public.perform_reset = function(actor, seed)
     end
 end
 
--- NOTE: on_player_respawned is owned by freeplay.lua (one handler per event);
--- it routes here when storage.recently_reset is set.
-
 -- Event/lib declarations: event_handler.add_lib reads these and ignores
 -- every other field, so public functions coexist here safely.
 Public.events =

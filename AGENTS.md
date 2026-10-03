@@ -20,10 +20,20 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
 
 ## Factorio gotchas
 
-- **One handler per event per mod.** `script.on_event` overwrites previous
-  registrations for the same event. Pick a single owner and route explicitly.
-  Lib tables (`.events`) registered through `event_handler` are no exception:
-  their deferred registration in `on_init`/`on_load` overwrites direct ones.
+- **`event_handler` multiplexes; `script.on_event` does not.** A lib's
+  `.events` table is collected per event and registered as *one* handler that
+  fans out to every lib (`core/lualib/event_handler.lua`), so several modules can
+  register the same event. A *direct* `script.on_event` replaces the previous
+  handler for that event, which is the case to watch: the lib registers without
+  filters, so an event declared in any `.events` table loses the filter of a
+  direct registration.
+- **Keep the hot events out of `.events` tables.** `on_entity_died` and
+  `on_post_entity_died` are registered directly by `freeplay.lua` with narrow
+  filters and re-set in `on_load`, because they fire on every entity death.
+  Declaring either in a `.events` table would clear those filters.
+- **Order between two modules handling one event is undefined** — the fan-out
+  iterates a `pairs`. Modules that share an event must not depend on each
+  other's ordering.
 - **Never call `Force:chart()` from `on_chunk_generated`.** Charting freshly
   generated chunks schedules their ungenerated neighbours, which fire the event
   again -> infinite generation cascade. Chart once after generation completes.
