@@ -446,6 +446,19 @@ local on_cutscene_end = function(event)
     if hint then hint.destroy() end
 end
 
+-- Nests cleared before the countdown ran out: the loss is off and everyone the
+-- cutscene took gets their character back. No marker of our own -- a colony
+-- that comes back runs the trigger below from scratch, cutscene included.
+local cancel_defeat = function(base)
+    storage.defeat_in = nil
+    stop_defeat_countdown()
+    for _, player in pairs(game.connected_players) do
+        exit_cutscene(player)
+    end
+    game.print({"ld-announcement", {"ld-defeat-cancelled"}})
+    log(string.format("event=defeat-cancelled, entities=%d", base))
+end
+
 -- Shared by the trigger below and control.lua's /defeat test command, which
 -- hands it a synthetic event so the test runs the real path.
 -- control.lua's /close-vote: admins end the vote and keep the map, the same
@@ -457,6 +470,18 @@ Public.close_reroll_vote = function()
 end
 
 Public.on_biter_base_built = function(event)
+    -- Raised when a migration builds a base and again when one of that base's
+    -- entities dies, so this one handler starts the loss and calls it off: the
+    -- box count is all either side needs.
+    local base = base_in_spawn_box()
+    if storage.defeat_in then
+        if #base <= DEFEAT_BASE_COUNT then
+            cancel_defeat(#base)
+        end
+        return
+    end
+    -- The entity is gone by the time a base dies, so its position is only
+    -- read on the build side.
     local position = event.entity.position
     if position.x <= -34 or position.x >= 34 or position.y <= -34 or position.y >= 34 then
         return
@@ -464,11 +489,10 @@ Public.on_biter_base_built = function(event)
     -- Raised once for every biter sacrificed to build a base, so this fires
     -- per entity, not per base. What the box holds so far -- turrets and nests
     -- both -- is both the trigger and what the cutscene flies over.
-    local base = base_in_spawn_box()
     -- Three nests and worms in the box is a colony, four is a loss. There is
     -- no clock on it: the early game lost on the first entity to land, which
     -- ended rounds nobody had a chance in, so a swarm now has to pile up.
-    if #base <= DEFEAT_BASE_COUNT or storage.defeat_in then
+    if #base <= DEFEAT_BASE_COUNT then
         return
     end
     game.print({"ld-announcement", {"ld-defeat-imminent"}})
@@ -485,29 +509,8 @@ Public.on_biter_base_built = function(event)
     update_defeat_countdown(DEFEAT_COUNTDOWN)
 end
 
--- Nests cleared before the countdown ran out: the loss is off and everyone the
--- cutscene took gets their character back. No marker of our own -- a colony
--- that comes back runs the trigger above from scratch, cutscene included.
-local cancel_defeat = function(base)
-    storage.defeat_in = nil
-    stop_defeat_countdown()
-    for _, player in pairs(game.connected_players) do
-        exit_cutscene(player)
-    end
-    game.print({"ld-announcement", {"ld-defeat-cancelled"}})
-    log(string.format("event=defeat-cancelled, entities=%d", base))
-end
-
 local on_defeat_second = function()
     if not storage.defeat_in then return end
-    -- Read on the second rather than off the nest events, so a colony cleared
-    -- by anything -- nests, worms, the turrets around them -- cancels just as
-    -- well, at most a second late.
-    local base = base_in_spawn_box()
-    if #base <= DEFEAT_BASE_COUNT then
-        cancel_defeat(#base)
-        return
-    end
     storage.defeat_in = storage.defeat_in - 1
     if storage.defeat_in > 0 then
         update_defeat_countdown(storage.defeat_in)
