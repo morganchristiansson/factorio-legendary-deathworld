@@ -280,6 +280,9 @@ script.set_event_filter(defines.events.on_entity_died, apex_filter(nil))
 script.on_event(defines.events.on_post_entity_died,
 function(event)
     if event.prototype.type == "unit-spawner" then
+        if storage.defeat_in then
+            reset.check_defeat_cancel()
+        end
         -- Named when the engine says who: last_user for turret and flamethrower
         -- kills, cause.player for the character that fired. Attribution, not
         -- credit -- a killed nest spawns two legendary guardians, and those

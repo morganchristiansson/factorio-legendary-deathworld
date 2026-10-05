@@ -377,6 +377,12 @@ local base_in_spawn_box = function()
     return game.surfaces[1].find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
 end
 
+-- The widest shot the engine still renders as the world instead of
+-- simplified map blocks: a fixed limit, not something to derive per player.
+-- It doubles as the cutscene's chart_mode_cutoff, so the flyout stays on the
+-- rendered world whatever the cutscene controller would default to.
+local WIDE_ZOOM = 0.25
+
 local watch_spawn_cutscene = function(nest)
     -- Crash-site intro, retargeted: glide onto what they built, then pull
     -- back. Worm turrets are skipped -- the nests are
@@ -397,11 +403,12 @@ local watch_spawn_cutscene = function(nest)
     -- the cutscene.
     local waypoints = {
         {position = center, zoom = 2, transition_time = 200, time_to_wait = 60},
-        {position = center, zoom = 0.5, transition_time = 125, time_to_wait = 480},
+        {position = center, zoom = WIDE_ZOOM, transition_time = 125, time_to_wait = 480},
     }
     for _, player in pairs(game.connected_players) do
         if player.character and player.character.valid and not jail.is_jailed(player.name) then
-            player.set_controller{type = defines.controllers.cutscene, start_zoom = 2, waypoints = waypoints}
+            player.set_controller{type = defines.controllers.cutscene, start_zoom = 2,
+                chart_mode_cutoff = WIDE_ZOOM, waypoints = waypoints}
             -- Same hint vanilla shows on the crash-site cutscene; TAB exits.
             -- Reused when still present: a second loss while the cutscene
             -- never ended threw "already present in the parent element",
@@ -445,6 +452,17 @@ local cancel_defeat = function(base)
     log(string.format("event=defeat-cancelled, entities=%d", base))
 end
 
+-- Re-checks the spawn box after a nest dies. on_biter_base_built only fires
+-- for migrations, so this is called from on_post_entity_died in freeplay to
+-- cancel an active countdown when nests are cleared before it expires.
+Public.check_defeat_cancel = function()
+    if not storage.defeat_in then return end
+    local base = base_in_spawn_box()
+    if #base <= DEFEAT_BASE_COUNT then
+        cancel_defeat(#base)
+    end
+end
+
 -- Shared by the trigger below and control.lua's /defeat test command, which
 -- hands it a synthetic event so the test runs the real path.
 -- control.lua's /close-vote: admins end the vote and keep the map, the same
@@ -456,9 +474,9 @@ Public.close_reroll_vote = function()
 end
 
 Public.on_biter_base_built = function(event)
-    -- Raised when a migration builds a base and again when one of that base's
-    -- entities dies, so this one handler starts the loss and calls it off: the
-    -- box count is all either side needs.
+    -- Raised when a migration builds a base (not on entity death), so this
+    -- handler only starts the loss. Cancellation mid-countdown is handled by
+    -- check_defeat_cancel, called from on_post_entity_died when a nest dies.
     local base = base_in_spawn_box()
     if storage.defeat_in then
         if #base <= DEFEAT_BASE_COUNT then
