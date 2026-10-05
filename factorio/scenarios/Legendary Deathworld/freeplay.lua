@@ -304,7 +304,7 @@ function(event)
         if killer then
             game.print({"ld-nest-killed", killer.name, tag, nest})
         else
-            game.print({"ld-nest-killed-unknown", tag, nest})
+            game.print({"ld-nest-killed-unknown", nest, tag})
         end
         -- Inline the fields rather than string.format: the empty key skips the
         -- locale lookup and prints the params as-is, so the line stays one
