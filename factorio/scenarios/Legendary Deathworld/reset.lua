@@ -18,30 +18,16 @@ local groups = require("groups")
 local Public = {}
 
 -----------------------------------------------------------------------
-local change_seed = function(seed)
+-- Every surface carries its own map_gen_settings (nothing global), and the
+-- getter hands back a copy: the seed only sticks if the table is written back.
+-- Note that the engine's own /seed command prints the seed the level was
+-- created with and never follows this one.
+local change_seed = function(surfaces, seed)
     seed = seed or math.random(1111, 4294967295)
-    local mgs = game.surfaces["nauvis"].map_gen_settings
-    mgs.seed = seed
-    game.surfaces["nauvis"].map_gen_settings = mgs
-    if game.surfaces["vulcanus"] ~= nil then
-    local mgs = game.surfaces["vulcanus"].map_gen_settings
-    mgs.seed = seed
-    game.surfaces["vulcanus"].map_gen_settings = mgs
-    end
-    if game.surfaces["gleba"] ~= nil then
-    local mgs = game.surfaces["gleba"].map_gen_settings
-    mgs.seed = seed
-    game.surfaces["gleba"].map_gen_settings = mgs
-    end
-    if game.surfaces["fulgora"] ~= nil then
-    local mgs = game.surfaces["fulgora"].map_gen_settings
-    mgs.seed = seed
-    game.surfaces["fulgora"].map_gen_settings = mgs
-    end
-    if game.surfaces["aquilo"] ~= nil then
-    local mgs = game.surfaces["aquilo"].map_gen_settings
-    mgs.seed = seed
-    game.surfaces["aquilo"].map_gen_settings = mgs
+    for _, surface in ipairs(surfaces) do
+        local mgs = surface.map_gen_settings
+        mgs.seed = seed
+        surface.map_gen_settings = mgs
     end
     return seed
 end
@@ -677,22 +663,19 @@ Public.perform_reset = function(actor, seed)
     local trigger = actor and (", actor=" .. actor) or ""
     local science = game.forces["player"].get_item_production_statistics(1).get_input_count "science"
     local minutes = math.floor(game.ticks_played / 3600)
-    -- We clear the main surfaces instead of deleting them because the seed can't be changed if they are deleted..
-    game.surfaces["nauvis"].clear(true)
-    if game.surfaces["vulcanus"] ~= nil then
-    game.surfaces["vulcanus"].clear(true)
+    -- We clear the planets instead of deleting them because the seed can't be
+    -- changed if they are deleted. Space platforms are deleted below instead.
+    local surfaces = {}
+    for _, surface in pairs(game.surfaces) do
+        if not surface.platform then
+            table.insert(surfaces, surface)
+        end
     end
-    if game.surfaces["gleba"] ~= nil then
-    game.surfaces["gleba"].clear(true)
-    end
-    if game.surfaces["fulgora"] ~= nil then
-    game.surfaces["fulgora"].clear(true)
-    end
-    if game.surfaces["aquilo"] ~= nil then
-    game.surfaces["aquilo"].clear(true)
+    for _, surface in ipairs(surfaces) do
+        surface.clear(true)
     end
     -- Apply the seed after clearing so it is the setting used for the new chunks.
-    seed = change_seed(seed)
+    seed = change_seed(surfaces, seed)
     log(string.format("event=map-reset%s, seed=%d, victory=%s, science=%d, minutes=%d",
         trigger,
         seed,

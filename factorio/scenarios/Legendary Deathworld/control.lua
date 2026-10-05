@@ -184,6 +184,12 @@ commands.add_command("set-spawn", "Move where players spawn. Usage: /set-spawn [
     log(string.format("event=spawn-point, actor=%s, position=%.1f,%.1f", actor, x, y))
 end)
 
+-- The engine's own /seed prints the seed the save was created with and cannot
+-- be overridden, so the round's real seed gets its own command.
+commands.add_command("map-seed", "Prints the seed of the current map.", function(command)
+    reply(command, "Current map seed: " .. game.surfaces[1].map_gen_settings.seed)
+end)
+
 commands.add_command("reset", "Resets map. Usage: /reset [seed]", function(command)
     local actor = "server"
     if command.player_index then
