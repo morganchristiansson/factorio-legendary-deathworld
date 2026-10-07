@@ -84,15 +84,19 @@ local next_round_name = function(name)
     return ROUND_SURFACES[1] -- a pre-swap round on the primary (or a pre-rename round) starts here
 end
 
--- The worldgen template for round surfaces: the current surface's settings
--- when it has them, else the host planet's prototype. Never template from the
--- dummy primary -- the fork strips its map_gen_settings to keep it pristine,
--- and bb templates from the planet prototype for the same reason.
+-- The worldgen template for every round surface: the host planet's
+-- prototype. The fork strips the dummy primary's settings and the vanilla
+-- proto of their autoplace controls (kept non-nil, so a nil-check misses it),
+-- making surface-sourced templates render empty grass; the cloned host proto
+-- is the fork's own intended worldgen. Copied so the per-round seed never
+-- mutates the shared prototype table.
 local round_settings = function(surface)
-    local mgs = surface and surface.map_gen_settings
-    if mgs then return mgs end
     local planet = game.planets[PLANET]
-    return planet and planet.prototype and planet.prototype.map_gen_settings
+    local proto = planet and planet.prototype and planet.prototype.map_gen_settings
+    if proto then
+        return util.shallow_copy(proto)
+    end
+    return surface and surface.map_gen_settings
 end
 
 -----------------------------------------------------------------------
