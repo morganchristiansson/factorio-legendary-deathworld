@@ -94,7 +94,7 @@ local round_settings = function(surface)
     local planet = game.planets[PLANET]
     local proto = planet and planet.prototype and planet.prototype.map_gen_settings
     if proto then
-        return util.shallow_copy(proto)
+        return util.copy(proto)
     end
     return surface and surface.map_gen_settings
 end
