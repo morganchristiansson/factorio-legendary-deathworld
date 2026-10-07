@@ -7,6 +7,7 @@ handler.add_lib(require("welcome"))
 handler.add_lib(require("reset"))
 handler.add_lib(require("jail"))
 handler.add_lib(groups)
+handler.add_lib(require("register"))
 
 -- Command feedback goes only to the caller; the console keeps seeing it.
 local function reply(command, message)

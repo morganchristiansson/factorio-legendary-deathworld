@@ -13,6 +13,7 @@ server data under `factorio/`. The active scenario is **Legendary Deathworld**.
 | `welcome.lua` | Join window shown to players |
 | `jail.lua` | Gulag: the pit surface, the jail records, escape prevention |
 | `groups.lua` | Permission groups and their commands: `/jail`, `/release`, `/freeze`, `/trust` |
+| `register.lua` | Transient registrations: one-shot tasks, the map reveal's `on_tick`, the expiry sweep and dynamic event filters — one module owns their save/load re-arming |
 
 **Boundary rule:** one-time setup/reset events belong in `reset.lua`; anything
 that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
@@ -68,8 +69,18 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
   handler each. New modules should expose `.events` / `.on_init` / `.on_load`
   fields on their returned table and register via `handler.add_lib` in
   control.lua instead of calling these directly.
-- Dynamic event registrations don't survive save/load; re-register
-  conditionally in `.on_load`.
+- **Dynamic event registrations don't survive save/load.** Route them through
+  `register.lua` instead of hand-rolling `on_load` re-arming: declare the
+  callback at module scope (`register.declare`/`register.define`), toggle it at
+  runtime (`register.set_active`/`clear_active`, `register.after`), and the
+  module's own `on_load` re-applies the stored active state and filters from
+  its one place. Two rules it enforces: never `on_nth_tick(1)` — a cadence-1
+  registration does not survive a save, so registering it in `on_load` trips
+  the script-event mismatch check when a late-joining player loads the level
+  (probe-verified) — and the `on_tick` slot has a single owner (the map
+  reveal). Static module-scope registrations (pregen `3`, the per-second `60`
+  and minute `3600` drivers, the entity-died handlers and their baseline
+  filters) run every session and stay direct.
 - The scenario's Lua is embedded in save files. After editing it, redeploy with
   `tools/sync-save <save.zip>` (see below) — editing the
   scenario folder alone does not update running saves.

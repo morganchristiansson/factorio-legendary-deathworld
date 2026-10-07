@@ -1,6 +1,7 @@
 local util = require("util")
 local reset = require("reset")
 local jail = require("jail")
+local register = require("register")
 
 -- The kit, given at spawn and on every death respawn. They used to differ --
 -- spawn got ten magazines, a respawn got none -- because a second player could
@@ -50,8 +51,11 @@ local on_temporary_tick = function()
     end
 
     if active then return end
-    script.on_nth_tick(30, nil)
+    register.disarm("temporary")
 end
+-- Dynamic worker for the one-shot expiry sweep; register re-arms it on load
+-- from the stored active state.
+register.nth_tick("temporary", 30, on_temporary_tick)
 
 local ping_player = function(target, message)
     if not target.character then return end
@@ -80,7 +84,7 @@ local ping_player = function(target, message)
         messages = messages,
         expiry = game.tick + 600,
     })
-    script.on_nth_tick(30, on_temporary_tick)
+    register.arm("temporary")
 end
 
 local on_console_chat = function(event)
@@ -152,7 +156,7 @@ local on_player_respawned = function(event)
         storage.respawn_protection = storage.respawn_protection or {}
         storage.respawn_protection[player.index] = game.tick + sticker.time_to_live
         player.surface.create_entity{name = "bioflux-speed-regen-sticker-behind", position = player.position, target = player.character}
-        script.on_nth_tick(30, on_temporary_tick)
+        register.arm("temporary")
     end
 end
 -----------------------------------------------------------------------
@@ -245,7 +249,7 @@ end
 local update_apex_spitter = function()
     local name, evo = current_apex_spitter()
     if name == storage.apex_spitter then return end
-    script.set_event_filter(defines.events.on_entity_died, apex_filter(name))
+    register.set_filter(defines.events.on_entity_died, apex_filter(name))
     storage.apex_spitter = name
     log(string.format("event=apex-spitter, evolution=%.2f, unit=%s", evo, name or "none"))
     if name ~= nil and game ~= nil then
@@ -277,8 +281,8 @@ function(event)
     end
 end
 )
--- Static baselines re-execute every session; the dynamic apex entry is
--- re-applied in on_load and recomputed in the minute tick.
+-- Static baselines re-execute every session; the dynamic apex entry routes
+-- through register, which re-applies the stored filter on load.
 script.set_event_filter(defines.events.on_entity_died, apex_filter(nil))
 -----------------------------------------------------------------------
 script.on_event(defines.events.on_post_entity_died,
@@ -583,16 +587,6 @@ freeplay.on_configuration_changed = function()
   init_ending_info()
   -- Recompute the apex filter from evolution so scenario syncs heal any drift.
   update_apex_spitter()
-end
-
--- Dynamic filters/registrations don't survive save/load; re-apply the stored
--- apex entry so the loaded filters match the saved ones, and re-arm the
--- temporary-effect sweep if anything is still active. No game access here by design.
-freeplay.on_load = function()
-  script.set_event_filter(defines.events.on_entity_died, apex_filter(storage.apex_spitter))
-  if next(storage.respawn_protection or {}) ~= nil or next(storage.pings or {}) ~= nil then
-    script.on_nth_tick(30, on_temporary_tick)
-  end
 end
 
 freeplay.on_init = function()

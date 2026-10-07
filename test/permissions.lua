@@ -167,6 +167,21 @@ _G.game = {
 -- repo path, so those names are handed over instead. jail gets the groups module
 -- we already loaded so both see the same instance.
 package.preload["jail-song"] = function() return "" end
+-- register.lua's module scope is engine-free; groups only calls nth_tick at
+-- scope and arm/disarm at runtime. The stub keeps the queue semantics: arm()
+-- queues a key, run_tick() fires the registered worker, so the tests can
+-- land a group change exactly when the real tick would.
+local register_stub = {defined = {}, pending = {}}
+package.preload["register"] = function()
+    return {
+        on_tick = function() end,
+        nth_tick = function(key, cadence, fn) register_stub.defined[key] = fn end,
+        arm = function(key) register_stub.pending[#register_stub.pending + 1] = key end,
+        disarm = function() end,
+        set_filter = function() end,
+        on_load = function() end,
+    }
+end
 
 local groups = require("factorio/scenarios/Legendary Deathworld/groups")
 package.loaded["groups"] = groups
@@ -197,8 +212,11 @@ local function said()
 end
 
 local function run_tick()
-    for _, handler in ipairs(nth_tick_handlers[1] or {}) do
-        handler()
+    local pending = register_stub.pending
+    register_stub.pending = {}
+    for _, key in ipairs(pending) do
+        local fn = register_stub.defined[key]
+        if fn then fn() end
     end
 end
 

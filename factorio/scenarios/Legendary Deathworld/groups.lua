@@ -13,11 +13,12 @@
 -- Nothing a player's command does may edit a group or move a player:
 -- edit_permission_group is denied in every group an admin can be in, and
 -- create_group returns nil for the same reason. Every change is therefore
--- queued and applied from a tick, where there is no acting player to be refused
--- by -- that is also where the restrictive groups get created in a save that
--- predates them. add_player reports whether a write landed, which the log
--- records: it is the only signal a failed write leaves.
+-- queued and applied from a tick (register.lua), where there is no acting player to
+-- be refused by -- that is also where the restrictive groups get created in a
+-- save that predates them. add_player reports whether a write landed, which the
+-- log records: it is the only signal a failed write leaves.
 -----------------------------------------------------------------------
+local register = require("register")
 local Public = {}
 
 local DEFAULT_GROUP_NAME = "Default"
@@ -168,6 +169,9 @@ end
 local function set_group(player_name, group_name)
     storage.group_ops = storage.group_ops or {}
     table.insert(storage.group_ops, {player = player_name, group = group_name})
+    -- Schedule the one-shot apply; arm is idempotent, so a burst of changes
+    -- in one tick still lands in a single application.
+    register.arm("group-apply")
 end
 Public.set_group = set_group
 
@@ -187,7 +191,12 @@ local apply_group_changes = function()
         end
     end
 end
-script.on_nth_tick(1, apply_group_changes)
+-- One shot: fires once a tick after the change was queued, then disarms
+-- itself; armed again by set_group when the next change lands.
+register.nth_tick("group-apply", 2, function()
+    register.disarm("group-apply")
+    apply_group_changes()
+end)
 
 local function get_temporary_table()
     storage.temporary_group = storage.temporary_group or {}

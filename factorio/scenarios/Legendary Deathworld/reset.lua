@@ -29,6 +29,7 @@ local util = require("util")
 local crash_site = require("crash-site")
 local jail = require("jail")
 local groups = require("groups")
+local register = require("register")
 
 local Public = {}
 
@@ -127,7 +128,7 @@ local on_tick_reveal = function()
     local surface = game.surfaces[storage.reveal_surface]
     if not surface then
         storage.reveal_index = nil
-        script.on_event(defines.events.on_tick, nil)
+        register.disarm("map-reveal")
         return
     end
     local index = storage.reveal_index
@@ -162,11 +163,14 @@ local on_tick_reveal = function()
             reveal_total = nil
         end
         storage.reveal_index = nil
-        script.on_event(defines.events.on_tick, nil)
+        register.disarm("map-reveal")
     else
         storage.reveal_index = index
     end
 end
+-- The reveal owns the single on_tick slot; register re-arms it on load from
+-- the stored active state.
+register.on_tick("map-reveal", on_tick_reveal)
 
 local start_map_reveal = function(surface)
     -- Force-generate the core chunk area synchronously (ground for the crash
@@ -190,7 +194,7 @@ local start_map_reveal = function(surface)
     storage.reveal_index = 1
     reveal_total = game.create_profiler()
     reveal_total.restart()
-    script.on_event(defines.events.on_tick, on_tick_reveal)
+    register.arm("map-reveal")
 end
 
 
@@ -255,26 +259,26 @@ end
 -- only while a reroll vote or the defeat countdown is open; it never builds
 -- a dormant surface outside those windows, so no map sits parked in memory
 -- for the bulk of a round.
--- One chunk per tick keeps the pre-gen hitch to a ~5ms tax when the reroll
--- vote is on and a fast reroll can land at any moment; the defeat countdown
--- spreads 9 chunks per 31 ticks over its 60s window for a gentler profile.
--- Three chunks per three ticks is the same rate without on_nth_tick(1): a
--- cadence-1 handler does not survive save/load cleanly and trips the
--- script-event mismatch check when a player joins a restarted server.
-local PREGEN_CHUNKS_REROLL, PREGEN_DELAY_REROLL = 3, 3
-local PREGEN_CHUNKS_COUNTDOWN, PREGEN_DELAY_COUNTDOWN = 9, 31
+-- One persistent driver (3 ticks) drives both pre-gen profiles from storage
+-- state -- no temporary on_nth_tick registrations, so save/load can never
+-- trip the script-event mismatch check. Reroll fast mode batches 3 chunks a
+-- fire (~1 chunk/tick, map ready in ~24s); the defeat countdown batches 1
+-- (~0.33/tick, tracking its 60s window). The driver is registered once at
+-- module scope like the per-second driver, and no-ops unless a countdown
+-- is actually running.
+local PREGEN_CHUNKS_REROLL = 3
+local PREGEN_CHUNKS_COUNTDOWN = 1
 
 local on_pregen_tick = function()
     if storage.reveal_index or not storage.pregen_surface or not storage.pregen_index then return end
     local surface = game.surfaces[storage.pregen_surface]
     if not surface then
-        -- the dormant surface was deleted (a reroll vote just failed)
+        -- the dormant surface was deleted (a reroll vote just failed): the
+        -- markers are cleared and the driver idles again
         storage.pregen_surface = nil
         storage.pregen_index = nil
-        script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, nil)
         return
     end
-    local delay = storage.pregen_delay or PREGEN_DELAY_COUNTDOWN
     local chunks = storage.pregen_chunks or PREGEN_CHUNKS_COUNTDOWN
     local index = storage.pregen_index
     local limit = math.min(index + chunks - 1, #reveal_order)
@@ -285,16 +289,18 @@ local on_pregen_tick = function()
     surface.force_generate_chunk_requests()
     index = limit + 1
     if index > #reveal_order then
-        -- Full coverage: stop ticking, but keep the dormant name so a vote
+        -- Full coverage: stop working, but keep the dormant name so a vote
         -- that fails after pre-generation completed can still delete it.
         storage.pregen_index = nil
-        script.on_nth_tick(delay, nil)
     else
         storage.pregen_index = index
     end
 end
+-- The persistent driver; registered at module scope so it re-executes every
+-- session and needs no on_load re-arming.
+script.on_nth_tick(3, on_pregen_tick)
 
-local start_pregen = function(rate, delay)
+local start_pregen = function(chunks)
     if storage.pregen_surface then return end
     local source = active_surface()
     local name = next_round_name(source.name)
@@ -308,9 +314,7 @@ local start_pregen = function(rate, delay)
     game.forces["player"].set_surface_hidden(name, true)
     storage.pregen_surface = name
     storage.pregen_index = 1
-    storage.pregen_chunks = rate
-    storage.pregen_delay = delay
-    script.on_nth_tick(delay, on_pregen_tick)
+    storage.pregen_chunks = chunks
 end
 
 local cancel_pregen = function()
@@ -319,7 +323,6 @@ local cancel_pregen = function()
     storage.pregen_surface = nil
     storage.pregen_index = nil
     storage.next_seed = nil
-    script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, nil)
     local surface = game.surfaces[name]
     if surface and not surface.planet then
         game.delete_surface(surface)
@@ -455,7 +458,7 @@ local start_reroll_vote = function()
     -- Pre-generate the next round's surface while the vote runs; the batch
     -- driver idles until the round's own reveal has finished. Aggressive
     -- rate: rerolls can resolve early and the map must be ready when they do.
-    start_pregen(PREGEN_CHUNKS_REROLL, PREGEN_DELAY_REROLL)
+    start_pregen(PREGEN_CHUNKS_REROLL)
 end
 
 -- Ballot counts, not a percentage: the denominator is whoever voted, not
@@ -658,7 +661,7 @@ Public.on_biter_base_built = function(event)
     -- Pre-generate the next surface during the countdown too, at the gentler
     -- rate tuned to the 60s window. If a reroll vote was running, that faster
     -- pre-gen simply carries on; start_pregen guards that.
-    start_pregen(PREGEN_CHUNKS_COUNTDOWN, PREGEN_DELAY_COUNTDOWN)
+    start_pregen(PREGEN_CHUNKS_COUNTDOWN)
     storage.defeat_in = DEFEAT_COUNTDOWN
     log(string.format("event=defeat, position=%.1f,%.1f, entities=%d, seconds=%d",
         position.x, position.y, #base, DEFEAT_COUNTDOWN))
@@ -754,7 +757,7 @@ local finish_surface_swap = function(surface)
     -- joinable (a sentinel healed by the minute tick would leave a
     -- poisoned-filter window).
     storage.apex_spitter = nil
-    script.set_event_filter(defines.events.on_entity_died, Public.apex_filter(nil))
+    register.set_filter(defines.events.on_entity_died, Public.apex_filter(nil))
     game.map_settings.enemy_expansion.settler_group_min_size = 8
     game.map_settings.enemy_expansion.settler_group_max_size = 9
     game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 1
@@ -908,7 +911,6 @@ Public.perform_reset = function(actor, seed)
         storage.pregen_surface = nil
         storage.pregen_index = nil
         storage.next_seed = nil
-        script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, nil)
         local mgs = new_surface.map_gen_settings
         mgs.seed = seed
         new_surface.map_gen_settings = mgs
@@ -921,7 +923,6 @@ Public.perform_reset = function(actor, seed)
     storage.pregen_surface = nil
     storage.pregen_index = nil
     storage.next_seed = nil
-    script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, nil)
 
     -- Ground for the characters and crash site must exist before anyone
     -- lands: the core area is what the staged reveal expands from (and is a
@@ -1102,16 +1103,6 @@ Public.on_configuration_changed = function()
             and name ~= storage.active_surface then
             game.delete_surface(stray)
         end
-    end
-end
--- Re-register dynamic handlers after a save/load if work was in flight, since
--- dynamic event registrations don't survive loading.
-Public.on_load = function()
-    if storage.reveal_index then
-        script.on_event(defines.events.on_tick, on_tick_reveal)
-    end
-    if storage.pregen_surface and storage.pregen_index then
-        script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, on_pregen_tick)
     end
 end
 
