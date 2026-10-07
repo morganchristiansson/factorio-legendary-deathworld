@@ -60,14 +60,16 @@ def main(command):
         sock.sendall(pack(2, 2, command))          # SERVERDATA_EXECCOMMAND
         out = []
         while True:
-            # The server sends one packet per command and then nothing.
+            # The server sends an empty response when the command finishes and,
+            # after /c with rcon.print(...), the printed text comes as its own
+            # packet after that -- so drain until the socket goes quiet, keeping
+            # non-empty bodies only.
             try:
                 req_id, req_type, body = read_packet(sock)
             except (socket.timeout, EOFError):
                 break
-            if req_type == 0 and not body:
-                break
-            out.append(body)
+            if body:
+                out.append(body)
         print("\n".join(out) or "(no output)")
 
 

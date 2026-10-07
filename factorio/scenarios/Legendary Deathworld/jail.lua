@@ -16,6 +16,9 @@ local GULAG_SURFACE_NAME = "gulag"
 local GULAG_GROUP_NAME = "gulag"
 local Public = {}
 
+-- Exposed to reset.lua so the swap's leftover-surface clear skips the pit.
+Public.gulag_surface_name = GULAG_SURFACE_NAME
+
 -- Floor and wall bounds of the pit itself.
 local PIT = {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}}
 
@@ -168,7 +171,12 @@ end
 
 -- Out of the pit, back to where they were taken from.
 local teleport_from_gulag = function(player, data)
-    local surface = game.surfaces[data.surface_index] or game.surfaces[1]
+    -- The round surface is deleted and recreated by every reset, so the
+    -- recorded name can be gone; fall back to the planet's current surface.
+    local surface = data.surface_name and game.surfaces[data.surface_name]
+        or game.surfaces[data.surface_index] -- pre-swap records kept the index
+        or (game.planets["nauvis2"] and game.planets["nauvis2"].surface)
+        or game.surfaces[1]
     local position = surface.find_non_colliding_position("character", data.position, 128, 1)
         or game.forces["player"].get_spawn_position(surface)
     if player.character then
@@ -197,6 +205,7 @@ Public.jail = function(actor, name, reason)
     local source_group = target.permission_group
     jailed[target.name] =
     {
+        surface_name = target.surface.name,
         surface_index = target.physical_surface_index,
         position = target.physical_position,
         actor = actor,

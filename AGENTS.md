@@ -9,7 +9,7 @@ server data under `factorio/`. The active scenario is **Legendary Deathworld**.
 |---|---|
 | `control.lua` | Commands (`/reset`), lib registration via `event_handler.add_lib` |
 | `freeplay.lua` | Game lifecycle: new-player kit, ordinary respawns, in-game events (nesting, research logging, victory detection) |
-| `reset.lua` | Map lifecycle: seed, wipe, staged map reveal, fresh-round setup, surface events |
+| `reset.lua` | Map lifecycle: dual-surface swap (`nauvis1`/`nauvis2` on the `nauvis2` planet), staged map reveal, dormant-surface pre-generation during the reroll/defeat countdown, fresh-round setup, surface events; the `nauvis` primary is a permanent dummy |
 | `welcome.lua` | Join window shown to players |
 | `jail.lua` | Gulag: the pit surface, the jail records, escape prevention |
 | `groups.lua` | Permission groups and their commands: `/jail`, `/release`, `/freeze`, `/trust` |
@@ -37,6 +37,29 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
 - **Never call `Force:chart()` from `on_chunk_generated`.** Charting freshly
   generated chunks schedules their ungenerated neighbours, which fire the event
   again -> infinite generation cascade. Chart once after generation completes.
+- **Deleting a surface is the only way to disassociate it from its planet.**
+  The reset swap leans on this: create the dormant round surface, move players
+  onto it (character detached, no death event), delete the old one, then
+  `on_surface_deleted` re-associates the fresh surface with the host planet.
+  The two round surfaces (`nauvis1`/`nauvis2`) live on the host planet
+  `nauvis2` (a planet the server's EverythingOnNauvis fork adds, unlocked for
+  the player force so its surfaces group under it in the map view); the
+  vanilla `nauvis` planet and its primary surface are a permanent dummy -- the
+  primary cannot be deleted (`delete_surface` queues but never completes), and
+  `associate_surface` has no disassociate form, so the primary can never host
+  the swap. A save deployed mid-round on the primary keeps playing there until
+  the first `/reset`, which migrates it (perform_reset's migration branch).
+- `game.surfaces[1]` means nothing across a swap: indices rebalance when the
+  round surface is deleted. Everything round-facing keys off
+  `reset.active_surface()` (the host planet's surface, with name fallbacks
+  for the two-tick window mid-swap), or `event.surface_index` inside handlers,
+  and name-keyed engine calls (`get_evolution_factor`, `chart_all`, pollution
+  stats) take that surface object, never `"nauvis"`.
+- **Chunk generation can outlive association.** The dormant surface's chunks
+  are pre-generated before it becomes the round surface, so guards like
+  freeplay's legendary-spawner upgrade use `reset.is_round_surface(surface)`
+  (name ∈ {nauvis1, nauvis2, plus the dummy primary}), not `surface.planet`
+  -- the planet is nil during pre-generation.
 - **Permission writes from a player's command are refused**, whatever the admin
   flag says: `edit_permission_group` for moving a player, `add_permission_group`
   for creating one. `groups.lua` queues every group change and applies it from a

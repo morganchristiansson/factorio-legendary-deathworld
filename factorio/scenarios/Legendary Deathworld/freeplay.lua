@@ -125,9 +125,9 @@ storage.nested_recently = false
 storage.nesting_spot = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0}}
 -----------------------------------------------------------------------
 local on_chunk_generated = function(event)
-	if event.surface.name == "nauvis" then
-		for k, entity in pairs (game.surfaces[1].find_entities_filtered{area = event.area, type = {"unit-spawner", "turret"}}) do
-			game.surfaces[1].create_entity{name = entity.name, position = entity.position, quality = "legendary"}
+	if reset.is_round_surface(event.surface) then
+		for k, entity in pairs (event.surface.find_entities_filtered{area = event.area, type = {"unit-spawner", "turret"}}) do
+			event.surface.create_entity{name = entity.name, position = entity.position, quality = "legendary"}
 			entity.destroy()
 		end
 	end
@@ -192,7 +192,7 @@ local on_research_finished = function(event)
 	end
     local player_count = #game.connected_players
     local research = event.research.name
-    local evo = game.forces["enemy"].get_evolution_factor("nauvis")
+    local evo = game.forces["enemy"].get_evolution_factor(reset.active_surface())
     log(string.format("event=research-finished, research=%s, evolution=%.4f, players=%d", research, evo, player_count))
 end
 -----------------------------------------------------------------------
@@ -201,6 +201,10 @@ local on_player_died = function(event)
     if not player then
         return
     end
+    -- A reset clears the surface out from under everyone; that death is ours,
+    -- and a line per player per reroll buries everything else in the log.
+    -- (The swap detaches characters instead of killing them, so this fires
+    -- only for genuine combat deaths.)
     local cause = "unknown"
     if event.cause and event.cause.valid then
         cause = event.cause.name
@@ -319,19 +323,20 @@ function(event)
             ", cause_type=", cause_type,
             ", cause_user=", tostring(cause_user),
             ", connected=", #game.connected_players}
-        local pos = game.surfaces[1].find_non_colliding_position(storage.strafer, event.position, 10, 0.5)
-        game.surfaces[1].create_entity{name = storage.strafer, position = pos, quality = "legendary"}
-        pos = game.surfaces[1].find_non_colliding_position(storage.stomper, event.position, 10, 0.5)
-        game.surfaces[1].create_entity{name = storage.stomper, position = pos, quality = storage.quality}
+        local surface = game.surfaces[event.surface_index]
+        local pos = surface.find_non_colliding_position(storage.strafer, event.position, 10, 0.5)
+        surface.create_entity{name = storage.strafer, position = pos, quality = "legendary"}
+        pos = surface.find_non_colliding_position(storage.stomper, event.position, 10, 0.5)
+        surface.create_entity{name = storage.stomper, position = pos, quality = storage.quality}
         if event.prototype.name == "gleba-spawner" then
             for i = 1, 9 do
-                pos = game.surfaces[1].find_non_colliding_position("item-on-ground", event.position, 0.5, 0.1)
-                game.surfaces[1].create_entity{name = "item-on-ground", position = pos, stack = {name = "pentapod-egg", count = 1}}
+                pos = surface.find_non_colliding_position("item-on-ground", event.position, 0.5, 0.1)
+                surface.create_entity{name = "item-on-ground", position = pos, stack = {name = "pentapod-egg", count = 1}}
             end
         elseif event.prototype.name == "gleba-spawner-small" then
             for i = 1, math.random(1, 3) do
-                pos = game.surfaces[1].find_non_colliding_position("item-on-ground", event.position, 0.5, 0.1)
-                game.surfaces[1].create_entity{name = "item-on-ground", position = pos, stack = {name = "pentapod-egg", count = 1}}
+                pos = surface.find_non_colliding_position("item-on-ground", event.position, 0.5, 0.1)
+                surface.create_entity{name = "item-on-ground", position = pos, stack = {name = "pentapod-egg", count = 1}}
             end
         end
     else
@@ -475,7 +480,7 @@ script.on_nth_tick(3600, function()
 	end
 
     -- starting time evo is 0.00004
-    local evo = game.forces["enemy"].get_evolution_factor(1)
+    local evo = game.forces["enemy"].get_evolution_factor(reset.active_surface())
     storage.evo_stage = storage.evo_stage or 0
     for i, stage in ipairs(evo_stages) do
         if evo >= stage[1] and storage.evo_stage < i then

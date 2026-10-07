@@ -1,14 +1,29 @@
--- Map reset and staged map reveal.
+-- Map reset and dual-surface swap.
 -----------------------------------------------------------------------
--- Public.perform_reset() wipes and regenerates the map with a fresh seed;
--- control.lua's /reset command and freeplay.lua both call it. The staged
--- reveal replaces the old
--- behaviour of generating + charting ~1500 chunks in a single tick, which
--- froze the server for seconds after every reset.
+-- The round alternates between two secondary surfaces ("nauvis1" and
+-- "nauvis2") hosted on the planet "nauvis2" (provided by a planet in the
+-- server's EverythingOnNauvis fork, unlocked for the player force so its
+-- surfaces group under it in the surfaces list; the vanilla "nauvis" planet
+-- and its primary surface are a permanent dummy, since the primary cannot
+-- be deleted). Public.perform_reset() moves everyone onto a fresh surface and
+-- deletes the old one -- the only way to disassociate a surface from its
+-- hosting planet -- then on_surface_deleted re-associates the fresh surface
+-- and stands the round up. No player dies, so a reset no longer spams the log
+-- with the engine's "X respawned" lines. The reroll (and defeat) countdown
+-- pre-generates the dormant surface slowly, so the next swap lands on a
+-- mostly-built map instead of re-hitching on a fresh reveal; control.lua's
+-- /reset command and freeplay.lua both call perform_reset(). The staged
+-- reveal replaces the old behaviour of generating + charting ~1500 chunks in
+-- a single tick, which froze the server for seconds after every reset.
 -----------------------------------------------------------------------
 -- Public interface:
---   Public.setup_starting_area(surf)- reveal + crash site + spawn defences
--- Reroll vote opens automatically at the end of on_surface_cleared below.
+--   Public.perform_reset(actor, seed) - swap the round onto the dormant surface
+--   Public.setup_starting_area(surf) - reveal + crash site + spawn defences
+--   Public.active_surface()          - the host planet's current surface
+--   Public.is_round_surface(surf)    - chunk-gen guard for both round names
+-- Reroll vote opens automatically at the end of a swap (on_surface_deleted).
+-- A pre-swap save that is still mid-round on the primary keeps playing there
+-- until the first reset (perform_reset's migration branch).
 
 local util = require("util")
 local crash_site = require("crash-site")
@@ -18,18 +33,54 @@ local groups = require("groups")
 local Public = {}
 
 -----------------------------------------------------------------------
--- Every surface carries its own map_gen_settings (nothing global), and the
--- getter hands back a copy: the seed only sticks if the table is written back.
--- Note that the engine's own /seed command prints the seed the level was
--- created with and never follows this one.
-local change_seed = function(surfaces, seed)
-    seed = seed or math.random(1111, 4294967295)
-    for _, surface in ipairs(surfaces) do
-        local mgs = surface.map_gen_settings
-        mgs.seed = seed
-        surface.map_gen_settings = mgs
+-- The round alternates between two secondary surfaces (nauvis1/nauvis2)
+-- hosted on the planet "nauvis2", which the server's EverythingOnNauvis
+-- fork provides (a hidden-free copy of the nauvis planet prototype). The
+-- vanilla "nauvis" planet and its primary surface are a permanent dummy: the
+-- primary cannot be deleted, so it can never be disassociated -- only
+-- surfaces on planet nauvis2 ever become the active round surface. The swap
+-- deletes the old round surface (which disassociates it from the planet --
+-- the only way) and the fresh one is associated in the swap's second half.
+-- The round planet is unlocked for the player force so it appears in the
+-- surfaces list as a planet (undiscovered planets bucket their surfaces
+-- under "Other"), and travel to it lands on the round surface itself.
+local PLANET = "nauvis2"
+local ROUND_SURFACES = {"nauvis1", "nauvis2"}
+-- The undeletable primary; a save deployed mid-round still plays on it until
+-- the first reset migrates the round over.
+local PRIMARY_NAME = "nauvis"
+
+-- The surface the current round plays on: the host planet's associated
+-- surface. The name fallbacks cover the two-tick window between the old
+-- surface's deletion and the new one's association, where the planet has no
+-- surface; the last fallback is the primary, which is where a save that
+-- predates the swap still has its round.
+Public.active_surface = function()
+    local planet = game.planets[PLANET]
+    if planet and planet.surface and planet.surface.valid then
+        return planet.surface
     end
-    return seed
+    for _, name in ipairs(ROUND_SURFACES) do
+        local surface = game.surfaces[name]
+        if surface then return surface end
+    end
+    return game.surfaces[1]
+end
+
+-- Chunk generation on either round name belongs to the round, including the
+-- dormant surface pre-generated during the reroll countdown before it is
+-- associated. The primary is included so a pre-swap save still playing on it
+-- keeps the legendary-spawner upgrade; it is never deleted, so it never
+-- confuses the deletion tracking. Guards freeplay's chunk upgrade.
+Public.is_round_surface = function(surface)
+    return surface.name == ROUND_SURFACES[1] or surface.name == ROUND_SURFACES[2] or surface.name == PRIMARY_NAME
+end
+
+local active_surface = Public.active_surface
+local next_round_name = function(name)
+    if name == ROUND_SURFACES[1] then return ROUND_SURFACES[2] end
+    if name == ROUND_SURFACES[2] then return ROUND_SURFACES[1] end
+    return ROUND_SURFACES[1] -- a pre-swap round on the primary (or a pre-rename round) starts here
 end
 
 -----------------------------------------------------------------------
@@ -71,7 +122,14 @@ local REVEAL_CHUNKS_PER_TICK = 8
 local reveal_total = nil
 
 local on_tick_reveal = function()
-    local surface = game.surfaces[1]
+    -- The reveal survives a save/load, and its surface can be deleted by a
+    -- /reset that lands mid-reveal: stop instead of charting a ghost.
+    local surface = game.surfaces[storage.reveal_surface]
+    if not surface then
+        storage.reveal_index = nil
+        script.on_event(defines.events.on_tick, nil)
+        return
+    end
     local index = storage.reveal_index
     local limit = math.min(index + REVEAL_CHUNKS_PER_TICK - 1, #reveal_order)
     for i = index, limit do
@@ -90,7 +148,7 @@ local on_tick_reveal = function()
     index = limit + 1
     if index > #reveal_order then
         -- All batches generated and charted: final safety sweep, then stop.
-        game.forces["player"].chart_all("nauvis")
+        game.forces["player"].chart_all(surface)
         -- Total wall time of the reveal. divide() would give ms-per-chunk but
         -- takes no argument in this build (self only), same as add(). The
         -- profiler is a Lua object, so it does not survive a save: on_load
@@ -120,6 +178,15 @@ local start_map_reveal = function(surface)
     -- batch force-generates next tick anyway, so this schedules no extra work.
     local core_tiles = REVEAL_CORE_RADIUS * 32
     game.forces["player"].chart(surface, {{-core_tiles, -core_tiles}, {core_tiles, core_tiles}})
+    -- A fully pre-generated dormant surface has no staged reveal to run: its
+    -- terrain already exists (the pre-gen walks centre-out, so a generated
+    -- far corner means the whole map is done), so a single chart pass shows
+    -- the entire map at once instead of a 3s+ filling walk.
+    if surface.is_chunk_generated(reveal_order[#reveal_order]) then
+        game.forces["player"].chart_all(surface)
+        return
+    end
+    storage.reveal_surface = surface.name
     storage.reveal_index = 1
     reveal_total = game.create_profiler()
     reveal_total.restart()
@@ -158,9 +225,10 @@ end
 
 -----------------------------------------------------------------------
 local place_turret_at_spawn = function()
-        local turret = game.surfaces[1].create_entity{name="gun-turret",position={-7,2},force="player", quality = "legendary"}
+        local surface = active_surface()
+        local turret = surface.create_entity{name="gun-turret",position={-7,2},force="player", quality = "legendary"}
         turret.insert{name="firearm-magazine",count=100,quality="legendary"}
-        local wall = game.surfaces[1].create_entity
+        local wall = surface.create_entity
         wall{name="stone-wall",position={-9,0},force="player"}
         wall{name="stone-wall",position={-8,0},force="player"}
         wall{name="stone-wall",position={-7,0},force="player"}
@@ -175,23 +243,93 @@ local place_turret_at_spawn = function()
         wall{name="stone-wall",position={-9,1},force="player"}
 end
 
-local on_pre_surface_cleared = function(event)
-    if event.surface_index == 1 then
-    -- We need to kill all players _before_ the surface is cleared, so that
-    -- their inventory, and crafting queue, end up on the old surface
-    for _, pl in pairs(game.players) do
-        if pl.connected and pl.character ~= nil then
-            -- We call die() here because otherwise we will spawn a duplicate
-            -- character, who will carry over into the new surface
-            pl.character.die()
-        end
-        -- Setting [ticks_to_respawn] to 1 seems to consistantly kill offline
-        -- players. Calling this for online players will cause them instead be
-        -- respawned the next tick, skipping the 10 respawn second timer.
-        pl.ticks_to_respawn = 1
-        --  Need to teleport otherwise offline players will force generate many chunks on new surface at their position on old surface when they rejoin.
-        pl.teleport({0,0}, "nauvis")
+-----------------------------------------------------------------------
+-- Dormant-surface pre-generation: while the reroll vote (or the defeat
+-- countdown) runs, the next round's surface is created and its chunks forced
+-- out of the engine slowly, so the swap lands on a mostly-built map instead
+-- of hitching on a fresh reveal. The round's own reveal has priority: this
+-- batch only runs when the reveal is idle, and it is its own tick cadence
+-- (31), so it never shares an on_tick/on_nth_tick slot with the reveal or the
+-- per-second drivers. The seed is rolled here with the surface, so whatever
+-- the next round becomes, its chunks and its seed agree. Pre-generation runs
+-- only while a reroll vote or the defeat countdown is open; it never builds
+-- a dormant surface outside those windows, so no map sits parked in memory
+-- for the bulk of a round.
+-- One chunk per tick keeps the pre-gen hitch to a ~5ms tax when the reroll
+-- vote is on and a fast reroll can land at any moment; the defeat countdown
+-- spreads 9 chunks per 31 ticks over its 60s window for a gentler profile.
+local PREGEN_CHUNKS_REROLL, PREGEN_DELAY_REROLL = 1, 1
+local PREGEN_CHUNKS_COUNTDOWN, PREGEN_DELAY_COUNTDOWN = 9, 31
+
+local on_pregen_tick = function()
+    if storage.reveal_index or not storage.pregen_surface or not storage.pregen_index then return end
+    local surface = game.surfaces[storage.pregen_surface]
+    if not surface then
+        -- the dormant surface was deleted (a reroll vote just failed)
+        storage.pregen_surface = nil
+        storage.pregen_index = nil
+        script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, nil)
+        return
     end
+    local delay = storage.pregen_delay or PREGEN_DELAY_COUNTDOWN
+    local chunks = storage.pregen_chunks or PREGEN_CHUNKS_COUNTDOWN
+    local index = storage.pregen_index
+    local limit = math.min(index + chunks - 1, #reveal_order)
+    for i = index, limit do
+        local c = reveal_order[i]
+        surface.request_to_generate_chunks({c[1] * 32, c[2] * 32}, 0)
+    end
+    surface.force_generate_chunk_requests()
+    index = limit + 1
+    if index > #reveal_order then
+        -- Full coverage: stop ticking, but keep the dormant name so a vote
+        -- that fails after pre-generation completed can still delete it.
+        storage.pregen_index = nil
+        script.on_nth_tick(delay, nil)
+    else
+        storage.pregen_index = index
+    end
+end
+
+local start_pregen = function(rate, delay)
+    if storage.pregen_surface then return end
+    local source = active_surface()
+    local name = next_round_name(source.name)
+    if game.surfaces[name] then return end
+    local mgs = source.map_gen_settings
+    mgs.seed = math.random(1111, 4294967295)
+    storage.next_seed = mgs.seed
+    game.create_surface(name, mgs)
+    storage.pregen_surface = name
+    storage.pregen_index = 1
+    storage.pregen_chunks = rate
+    storage.pregen_delay = delay
+    script.on_nth_tick(delay, on_pregen_tick)
+end
+
+local cancel_pregen = function()
+    local name = storage.pregen_surface
+    if not name then return end
+    storage.pregen_surface = nil
+    storage.pregen_index = nil
+    storage.next_seed = nil
+    script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, nil)
+    local surface = game.surfaces[name]
+    if surface and not surface.planet then
+        game.delete_surface(surface)
+    end
+end
+
+-- Every deleted surface fires on_pre_surface_deleted/on_surface_deleted, and
+-- only the round surface's deletion is the swap's second half (platforms and
+-- a failed pre-gen are not). Track the exact surface being swapped out by
+-- name -- not by membership in the round-name set, which would miss a round
+-- surface named in an older convention -- so its companion event below picks
+-- the right deletion out of the pile.
+local on_pre_surface_deleted = function(event)
+    local surface = game.surfaces[event.surface_index]
+    if surface and surface.name == storage.pending_old_name then
+        storage.pending_old = event.surface_index
     end
 end
 
@@ -308,6 +446,10 @@ local start_reroll_vote = function()
     for _, player in pairs(game.connected_players) do
         draw_reroll_gui(player)
     end
+    -- Pre-generate the next round's surface while the vote runs; the batch
+    -- driver idles until the round's own reveal has finished. Aggressive
+    -- rate: rerolls can resolve early and the map must be ready when they do.
+    start_pregen(PREGEN_CHUNKS_REROLL, PREGEN_DELAY_REROLL)
 end
 
 -- Ballot counts, not a percentage: the denominator is whoever voted, not
@@ -333,6 +475,9 @@ local fail_reroll_vote = function(reason)
     end
     game.print({"ld-announcement", {"ld-reroll-fail-" .. reason, yes, yes + no}})
     stop_reroll_vote()
+    -- The kept map wins; the pre-generated next surface is thrown away. It
+    -- gets re-created when the next countdown opens.
+    cancel_pregen()
 end
 
 -- Static per-second driver: no-op without an active vote, so no .on_load
@@ -374,7 +519,7 @@ local SPAWN_BOX = {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32
 -- What the box holds so far -- turrets and nests both -- is both the trigger
 -- and what the cutscene flies over.
 local base_in_spawn_box = function()
-    return game.surfaces[1].find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
+    return active_surface().find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
 end
 
 -- The widest shot the engine still renders as the world instead of
@@ -504,6 +649,10 @@ Public.on_biter_base_built = function(event)
     -- while a reroll vote is still open. The vote is moot: the countdown
     -- ends in a reset, which opens a fresh one.
     stop_reroll_vote()
+    -- Pre-generate the next surface during the countdown too, at the gentler
+    -- rate tuned to the 60s window. If a reroll vote was running, that faster
+    -- pre-gen simply carries on; start_pregen guards that.
+    start_pregen(PREGEN_CHUNKS_COUNTDOWN, PREGEN_DELAY_COUNTDOWN)
     storage.defeat_in = DEFEAT_COUNTDOWN
     log(string.format("event=defeat, position=%.1f,%.1f, entities=%d, seconds=%d",
         position.x, position.y, #base, DEFEAT_COUNTDOWN))
@@ -566,11 +715,19 @@ local on_reroll_join = function(event)
     if player and player.valid then draw_reroll_gui(player) end
 end
 
-local on_surface_cleared = function(event)
-    if event.surface_index == 1 then
+-- The swap's second half, in one place: associate the fresh surface with the
+-- planet (which makes it the current surface), reset the round state and
+-- stand the round up. Called from on_surface_deleted (the normal path) and
+-- from on_configuration_changed (a save/load that landed in the one-tick gap
+-- between the old surface's deletion and the association).
+local finish_surface_swap = function(surface)
+    local planet = game.planets[PLANET]
+    if planet and not planet.surface then
+        planet.associate_surface(surface)
+    end
+    storage.active_surface = surface.name
     storage.nesting_spot = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0}}
     storage.quality = "legendary"
-    storage.recently_reset = "true"
     storage.strafer = "behemoth-spitter"
     storage.stomper = "behemoth-spitter"
     storage.victory = false
@@ -597,17 +754,31 @@ local on_surface_cleared = function(event)
     -- /set-spawn moves the spawn point; a fresh map starts from the scenario's
     -- own again (the origin the crash site and spawn defences are built at --
     -- 2.0 no longer exposes the map's spawn points to Lua).
-    game.forces["player"].set_spawn_position({x = 0, y = 0}, game.surfaces[1])
+    game.forces["player"].set_spawn_position({x = 0, y = 0}, surface)
     game.forces["enemy"].reset()
     game.forces["enemy"].reset_evolution()
+    game.forces["enemy"].friendly_fire = false
     game.reset_game_state()
     game.reset_time_played()
-    game.get_pollution_statistics("nauvis").clear()
-    if game.surfaces["gleba"] ~= nil then
-    game.get_pollution_statistics("gleba").clear()
-    end
     stop_defeat_countdown()
+    Public.setup_starting_area(surface)
+    -- The new round's reroll vote re-opens the dormant-surface pre-generation
+    -- for the round after this one.
     start_reroll_vote()
+end
+
+-- The swap's second half, entry point: the old surface is gone and the planet
+-- is free again, so the freshly built surface is adopted and the round stood
+-- up on it. Only the round surface's deletion reaches this point, thanks to
+-- the index recorded in on_pre_surface_deleted.
+local on_surface_deleted = function(event)
+    if event.surface_index ~= storage.pending_old then return end
+    storage.pending_old = nil
+    storage.pending_old_name = nil
+    local surface = game.surfaces[storage.pending_surface]
+    storage.pending_surface = nil
+    if surface then
+        finish_surface_swap(surface)
     end
 end
 
@@ -615,8 +786,8 @@ local create_crash_site = function(surface)
     crash_site.create_crash_site(surface, {-5,-6}, util.copy(storage.crashed_ship_items), util.copy(storage.crashed_debris_items), util.copy(storage.crashed_ship_parts))
 end
 
--- Everything a fresh round needs at spawn (fresh save or post-reset
--- respawn): staged reveal, crash site, starting turret and nest territory.
+-- Everything a fresh round needs at spawn (fresh save or a finished surface
+-- swap): staged reveal, crash site, starting turret and nest territory.
 Public.setup_starting_area = function(surface)
     start_map_reveal(surface)
     create_crash_site(surface)
@@ -635,7 +806,11 @@ local on_surface_created = function(event)
 
 end
 
--- One-time setup for the very first round, run by the first created player.
+-- One-time setup for the very first round. A fresh save's first round is
+-- built on the round surface created in on_init (the engine spawned the first
+-- joiners on the dummy primary, so the first player is walked over). A
+-- pre-swap save that is still mid-round on the primary simply keeps playing
+-- there untouched until the first reset migrates it.
 local setup_first_round = function(player)
     if storage.init_ran then return end
     storage.init_ran = true
@@ -647,28 +822,57 @@ local setup_first_round = function(player)
     -- off. Group membership lives in the save, so an old spectate-on save
     -- stays spectating until an admin runs /spectate-mode off once.
 
+    local surface = active_surface()
+    if surface.name == PRIMARY_NAME then
+        return
+    end
     if not storage.disable_crashsite then
-        local surface = player.surface
         Public.setup_starting_area(surface)
     end
-end
-
--- Rebuild the crash site for the first respawn after a reset. The kit is not
--- given here: it is the same as the ordinary death kit, so freeplay grants it
--- on every respawn and giving it twice would hand over two pistols.
-local on_first_respawn = function(player)
-    local surface = game.surfaces[1]
-    Public.setup_starting_area(surface)
-    game.forces["enemy"].friendly_fire = false
-    -- Cleanup platforms that have no surface
-    for _, platform in pairs(game.forces["player"].platforms) do
-    platform.destroy(1)
+    if player and player.valid then
+        local character = player.character
+        if character and character.valid then
+            character.teleport({0, 0}, surface)
+        else
+            player.teleport({0, 0}, surface)
+        end
     end
 end
 
--- Wipes and regenerates all main surfaces with a fresh seed. Called by
--- control.lua's /reset command (with the acting player) and by freeplay.lua
--- on defeat conditions.
+-- A player who was offline through the swap rejoins with no character (their
+-- old one was deleted with the surface) or with one left on a foreign
+-- surface; put them back at round spawn with a fresh character and the spawn
+-- kit, so the rejoin does not force-generate chunks at a stale position.
+-- Jailed players are handled by jail.lua's own join hook and left alone here.
+local on_player_joined = function(event)
+    on_reroll_join(event)
+    local player = game.get_player(event.player_index)
+    if not (player and player.valid) or jail.is_jailed(player.name) then return end
+    local target = active_surface()
+    local character = player.character
+    local misplaced = (not character or not character.valid) or player.surface.name ~= target.name
+    if misplaced then
+        if character and character.valid then
+            player.character = nil
+        end
+        player.teleport({0, 0}, target)
+        local fresh = target.create_entity{name = "character", position = {0, 0}, force = "player"}
+        if fresh then
+            player.set_controller{type = defines.controllers.character, character = fresh}
+            util.insert_safe(player, storage.created_items)
+        end
+    end
+end
+
+-- Swaps the round onto the dormant surface: it is created fresh (or adopted
+-- pre-generated by the reroll countdown) and everyone not jailed is moved
+-- onto it -- characters detached first, so no death event and no respawn log
+-- line -- then the old surface is deleted, the one way to disassociate it
+-- from the planet. on_surface_deleted re-associates the fresh surface and
+-- stands the round up. Inventories do not survive: the old character is
+-- destroyed with its surface and the new one starts from the spawn kit.
+-- Called by control.lua's /reset command (with the acting player) and by
+-- freeplay.lua on defeat conditions.
 Public.perform_reset = function(actor, seed)
     -- Spectate mode is off between rounds: everybody plays, and a
     -- round that started with it on (admin toggle, or an older save) leaves
@@ -681,30 +885,98 @@ Public.perform_reset = function(actor, seed)
     local trigger = actor and (", actor=" .. actor) or ""
     local science = game.forces["player"].get_item_production_statistics(1).get_input_count "science"
     local minutes = math.floor(game.ticks_played / 3600)
-    -- We clear the planets instead of deleting them because the seed can't be
-    -- changed if they are deleted. Space platforms are deleted below instead.
-    local surfaces = {}
-    for _, surface in pairs(game.surfaces) do
-        if not surface.platform then
-            table.insert(surfaces, surface)
+
+    local old_surface = active_surface()
+    local old_name = old_surface.name
+    local migrating = (old_name == PRIMARY_NAME) -- a pre-swap save: round still on the primary
+    local new_name = next_round_name(old_name)
+    -- The reroll (or defeat) countdown pre-generated the dormant surface with
+    -- its seed locked in; adopt it as-is. An explicit /reset seed overrides
+    -- the pre-generation: same name, but the seed changes and the
+    -- pre-generated chunks are cleared so the map regenerates from it.
+    local new_surface = game.surfaces[new_name]
+    if new_surface and seed then
+        storage.pregen_surface = nil
+        storage.pregen_index = nil
+        storage.next_seed = nil
+        script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, nil)
+        local mgs = new_surface.map_gen_settings
+        mgs.seed = seed
+        new_surface.map_gen_settings = mgs
+        new_surface.clear(true)
+    elseif not new_surface then
+        local mgs = old_surface.map_gen_settings
+        mgs.seed = seed or math.random(1111, 4294967295)
+        new_surface = game.create_surface(new_name, mgs)
+    end
+    storage.pregen_surface = nil
+    storage.pregen_index = nil
+    storage.next_seed = nil
+    script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, nil)
+
+    -- Ground for the characters and crash site must exist before anyone
+    -- lands: the core area is what the staged reveal expands from (and is a
+    -- no-op when the surface was pre-generated).
+    new_surface.request_to_generate_chunks({0, 0}, REVEAL_CORE_RADIUS)
+    new_surface.force_generate_chunk_requests()
+
+    -- Move everyone onto the new surface without a death: detaching the
+    -- character leaves it on the old surface, its inventory going down with
+    -- the deletion, then a fresh character is raised on the new one with the
+    -- spawn kit. Jailed players stay in the pit, which the swap never touches.
+    for _, player in pairs(game.connected_players) do
+        if not jail.is_jailed(player.name) then
+            local character = player.character
+            if character and character.valid then
+                player.character = nil
+            end
+            player.teleport({0, 0}, new_surface)
+            local fresh = new_surface.create_entity{name = "character", position = {0, 0}, force = "player"}
+            if fresh then
+                player.set_controller{type = defines.controllers.character, character = fresh}
+                util.insert_safe(player, storage.created_items)
+            end
         end
     end
-    for _, surface in ipairs(surfaces) do
-        surface.clear(true)
+
+    -- Leftover world surfaces (orbits) are cleared as before; the primary is
+    -- skipped automatically (undeletable) and the gulag is left alone, its
+    -- floor and walls belong to the pit, and clearing them would kill jailed
+    -- players, the one respawn this reset is meant to end.
+    for _, surface in pairs(game.surfaces) do
+        if not surface.platform
+            and surface.deletable
+            and surface.name ~= old_name
+            and surface.name ~= new_name
+            and surface.name ~= jail.gulag_surface_name then
+            surface.clear(true)
+        end
     end
-    -- Apply the seed after clearing so it is the setting used for the new chunks.
-    seed = change_seed(surfaces, seed)
+
     log(string.format("event=map-reset%s, seed=%d, victory=%s, science=%d, minutes=%d",
         trigger,
-        seed,
+        new_surface.map_gen_settings.seed,
         tostring(storage.victory),
         science,
         minutes))
-    -- We delete space platforms
+    -- Space platforms are deleted; they are surfaces too, so the swap's
+    -- deletion tracking picks the round surface out of the pile by index.
     for _, surface in pairs(game.surfaces) do
         if surface.platform then
             game.delete_surface(surface)
         end
+    end
+    if migrating then
+        -- The round still sat on the undeletable primary and the host planet
+        -- is free, so no deletion/disassociation is needed: finishing the swap
+        -- associates the fresh surface and stands the round up right here.
+        finish_surface_swap(new_surface)
+    else
+        -- Queue the old surface's deletion: on_surface_deleted fires a tick
+        -- or two later, once the planet is free, and finishes the swap there.
+        storage.pending_surface = new_name
+        storage.pending_old_name = old_name
+        game.delete_surface(old_surface)
     end
 end
 
@@ -712,19 +984,6 @@ end
 -- every other field, so public functions coexist here safely.
 Public.events =
 {
-    -- The first respawn after a reset is when the crash site goes back up: the
-    -- surface was wiped and nothing rebuilds it until someone spawns. The flag
-    -- is ours and only ours -- freeplay used to read it to choose a kit, and
-    -- with one kit there is nothing left to agree on.
-    [defines.events.on_player_respawned] = function(event)
-        local player = game.get_player(event.player_index)
-        if not (player and player.valid and storage.recently_reset == "true") then
-            return
-        end
-        storage.recently_reset = "false"
-        on_first_respawn(player)
-    end,
-
     -- The first round's setup, on the first player to exist. It was a call out
     -- of freeplay's on_player_created, which only made sense under the belief
     -- that one module may register an event; the event_handler fans out to both
@@ -736,25 +995,114 @@ Public.events =
         end
     end,
   [defines.events.on_surface_created] = on_surface_created,
-  [defines.events.on_pre_surface_cleared] = on_pre_surface_cleared,
-  [defines.events.on_surface_cleared] = on_surface_cleared,
+  [defines.events.on_pre_surface_deleted] = on_pre_surface_deleted,
+  [defines.events.on_surface_deleted] = on_surface_deleted,
   [defines.events.on_biter_base_built] = Public.on_biter_base_built,
   ["crash-site-skip-cutscene"] = on_skip_cutscene,
   [defines.events.on_cutscene_finished] = on_cutscene_end,
   [defines.events.on_cutscene_cancelled] = on_cutscene_end,
   [defines.events.on_gui_click] = on_reroll_click,
-  [defines.events.on_player_joined_game] = on_reroll_join,
+  [defines.events.on_player_joined_game] = on_player_joined,
 }
 Public.on_init = function()
     ensure_crash_loot()
-    storage.recently_reset = "false"
+    -- A fresh game: the round surface is created from the primary's settings
+    -- (same seed) and associated with the host planet; setup_first_round
+    -- builds the starting area and walks the first player over. Pre-swap
+    -- saves skip this -- their round is still on the primary, and the first
+    -- reset migrates it.
+    local source = game.surfaces[PRIMARY_NAME]
+    local surface = game.create_surface(ROUND_SURFACES[1], source and source.map_gen_settings)
+    local planet = game.planets[PLANET]
+    if planet and not planet.surface then
+        planet.associate_surface(surface)
+    end
+    if planet then
+        game.forces["player"].unlock_space_location(PLANET)
+    end
+    -- The dummy primary hosts no round; planet.hidden (the fork) only hides it
+    -- from the star map, so hide the surface from the surfaces panel the same
+    -- way the gulag is hidden.
+    game.forces["player"].set_surface_hidden(PRIMARY_NAME, true)
+    storage.active_surface = surface.name
 end
-Public.on_configuration_changed = function() ensure_crash_loot() end
--- Re-register the tick handler after a save/load if a reveal was in flight,
--- since dynamic event registrations don't survive loading.
+Public.on_configuration_changed = function()
+    ensure_crash_loot()
+    -- Existing (dual-surface) saves adopt the surface the host planet owns
+    -- right now. A deploy onto a pre-swap save (round still on the primary)
+    -- leaves it alone: the first reset migrates it. This also repairs a save
+    -- that landed in the one-tick gap between the old surface's deletion and
+    -- the new one's association -- finish_surface_swap is idempotent.
+    local planet = game.planets[PLANET]
+    if planet and planet.surface then
+        storage.active_surface = planet.surface.name
+    elseif storage.pending_surface and game.surfaces[storage.pending_surface] then
+        local surface = game.surfaces[storage.pending_surface]
+        storage.pending_surface = nil
+        finish_surface_swap(surface)
+    else
+        -- A swap interrupted after the deletion but before the association
+        -- (or a pre-rename round deleted before its swap's second half) leaves
+        -- the active round surface orphaned, still planet-less: heal it. The
+        -- recorded active name can point at the already-deleted round, so the
+        -- orphan is found by the players standing on it as a fallback.
+        local active = storage.active_surface and game.surfaces[storage.active_surface]
+        if not (active and active.valid and not active.planet) then
+            active = nil
+            for _, name in ipairs(ROUND_SURFACES) do
+                local candidate = game.surfaces[name]
+                if candidate and not candidate.planet then
+                    for _, p in pairs(game.connected_players) do
+                        if p.surface == candidate then
+                            active = candidate
+                            break
+                        end
+                    end
+                end
+                if active then break end
+            end
+        end
+        if active and not active.planet and active.name ~= PRIMARY_NAME then
+            if planet then planet.associate_surface(active) end
+            storage.active_surface = active.name
+        end
+        storage.pregen_surface = nil
+        storage.pregen_index = nil
+        storage.next_seed = nil
+    end
+    -- Force resets wipe charts, so the dummy primary's old world goes black
+    -- and nothing ever re-charts it; the fork's planet.hidden only hides it
+    -- from the star map, so the surface is hidden from the surfaces panel the
+    -- same way the gulag is hidden.
+    game.forces["player"].set_surface_hidden(PRIMARY_NAME, true)
+    -- The host planet must be discovered for its surfaces to group under it
+    -- in the map view; an undiscovered planet buckets them under "Other".
+    if game.planets[PLANET] then
+        game.forces["player"].unlock_space_location(PLANET)
+    end
+    -- Deploy hygiene: a round-named surface that is planet-less and belongs
+    -- to no in-flight swap is a stray -- a vote that failed after
+    -- pre-generation completed, or an orphan from before a naming change.
+    -- The active surface is the planet's (or healed above), so this cannot
+    -- touch a live round.
+    for _, name in ipairs(ROUND_SURFACES) do
+        local stray = game.surfaces[name]
+        if stray and not stray.planet
+            and name ~= storage.pending_surface
+            and name ~= storage.pregen_surface
+            and name ~= storage.active_surface then
+            game.delete_surface(stray)
+        end
+    end
+end
+-- Re-register dynamic handlers after a save/load if work was in flight, since
+-- dynamic event registrations don't survive loading.
 Public.on_load = function()
     if storage.reveal_index then
         script.on_event(defines.events.on_tick, on_tick_reveal)
+    end
+    if storage.pregen_surface and storage.pregen_index then
+        script.on_nth_tick(storage.pregen_delay or PREGEN_DELAY_COUNTDOWN, on_pregen_tick)
     end
 end
 
