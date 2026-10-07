@@ -300,6 +300,9 @@ local start_pregen = function(rate, delay)
     mgs.seed = math.random(1111, 4294967295)
     storage.next_seed = mgs.seed
     game.create_surface(name, mgs)
+    -- Keep the pre-building map off the surfaces list; it is un-hidden when
+    -- the swap adopts it.
+    game.forces["player"].set_surface_hidden(name, true)
     storage.pregen_surface = name
     storage.pregen_index = 1
     storage.pregen_chunks = rate
@@ -725,6 +728,9 @@ local finish_surface_swap = function(surface)
     if planet and not planet.surface then
         planet.associate_surface(surface)
     end
+    -- The round surface belongs on the surfaces list; a dormant surface
+    -- hidden during pre-generation is revealed here.
+    game.forces["player"].set_surface_hidden(surface.name, false)
     storage.active_surface = surface.name
     storage.nesting_spot = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0}}
     storage.quality = "legendary"
