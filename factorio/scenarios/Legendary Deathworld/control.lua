@@ -9,7 +9,8 @@ handler.add_lib(require("jail"))
 handler.add_lib(groups)
 handler.add_lib(require("register"))
 
-handler.add_lib(require("shallow-water"))
+local shallow_water = require("shallow-water")
+handler.add_lib(shallow_water)
 
 -- Command feedback goes only to the caller; the console keeps seeing it.
 local function reply(command, message)
@@ -128,6 +129,21 @@ commands.add_command("spectate-mode", "Enable or disable spectator permissions. 
     local enabled = mode == "on"
     groups.set_default_spectate(enabled)
     game.print("Default spectator mode is now " .. (enabled and "on" or "off") .. ".")
+end)
+
+commands.add_command("shallow-water", "Turn walkable shallow water on or off for terrain generated from now on. Usage: /shallow-water <on|off>", function(command)
+    local mode, actor = admin_target(command, "/shallow-water <on|off>")
+    if not mode then
+        return
+    end
+    mode = mode:lower()
+    if mode ~= "on" and mode ~= "off" then
+        reply(command, "Usage: /shallow-water <on|off>")
+        return
+    end
+    local enabled = mode == "on"
+    shallow_water.set_enabled(enabled)
+    game.print("Shallow water is now " .. mode .. " (" .. actor .. "). Terrain already generated keeps its water; the next /reset generates a whole map with it " .. mode .. ".")
 end)
 
 -- TEMPORARY test command: delete once the loss sequence no longer needs

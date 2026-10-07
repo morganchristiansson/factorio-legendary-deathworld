@@ -14,9 +14,18 @@ for name in pairs(SHALLOW) do
     DEEP_NAMES[#DEEP_NAMES + 1] = name
 end
 
+Public.is_enabled = function()
+    return storage.shallow_water == true
+end
+
+Public.set_enabled = function(enabled)
+    storage.shallow_water = enabled
+    log("event=shallow-water, enabled=" .. tostring(enabled))
+end
+
 local on_chunk_generated = function(event)
     local surface = event.surface
-    if not reset.is_round_surface(surface) then
+    if not Public.is_enabled() or not reset.is_round_surface(surface) then
         return
     end
     local tiles = {}
