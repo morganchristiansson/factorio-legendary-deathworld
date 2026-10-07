@@ -624,7 +624,7 @@ end
 Public.check_defeat_cancel = function()
     if not storage.defeat_in then return end
     local base = base_in_spawn_box()
-    if #base <= DEFEAT_BASE_COUNT then
+    if #base < DEFEAT_BASE_COUNT then
         cancel_defeat(#base)
     end
 end
@@ -645,7 +645,7 @@ Public.on_biter_base_built = function(event)
     -- check_defeat_cancel, called from on_post_entity_died when a nest dies.
     local base = base_in_spawn_box()
     if storage.defeat_in then
-        if #base <= DEFEAT_BASE_COUNT then
+        if #base < DEFEAT_BASE_COUNT then
             cancel_defeat(#base)
         end
         return
@@ -657,15 +657,14 @@ Public.on_biter_base_built = function(event)
         return
     end
     -- Raised once for every biter sacrificed to build a base, so this fires
-    -- per entity, not per base. What the box holds so far -- turrets and nests
-    -- both -- is both the trigger and what the cutscene flies over.
-    -- Three nests and worms in the box is a colony, four is a loss. There is
-    -- no clock on it: the early game lost on the first entity to land, which
-    -- ended rounds nobody had a chance in, so a swarm now has to pile up.
-    if #base <= DEFEAT_BASE_COUNT then
+    -- per entity, not per base: every build near spawn repeats the warning,
+    -- and a count that reaches the loss line starts the countdown. There is
+    -- no clock below the line: the early game lost on the first entity to
+    -- land, which ended rounds nobody had a chance in, so a swarm piles up.
+    game.print({"ld-announcement", {"ld-defeat-imminent"}})
+    if #base < DEFEAT_BASE_COUNT then
         return
     end
-    game.print({"ld-announcement", {"ld-defeat-imminent"}})
     -- Both widgets live at the top of the screen, and a loss can land
     -- while a reroll vote is still open. The vote is moot: the countdown
     -- ends in a reset, which opens a fresh one.
