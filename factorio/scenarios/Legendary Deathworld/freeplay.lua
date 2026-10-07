@@ -2,6 +2,8 @@ local util = require("util")
 local reset = require("reset")
 local jail = require("jail")
 local register = require("register")
+local ied_biters = require("ied-biters")
+local spitter_turrets = require("spitter-turrets")
 
 -- The kit, given at spawn and on every death respawn. They used to differ --
 -- spawn got ten magazines, a respawn got none -- because a second player could
@@ -344,6 +346,9 @@ function(event)
                 surface.create_entity{name = "item-on-ground", position = pos, stack = {name = "pentapod-egg", count = 1}}
             end
         end
+    elseif event.prototype.type == "unit" then
+        ied_biters.on_unit_died(event)
+        spitter_turrets.on_unit_died(event)
     else
         if math.random(1, 10) == 1 then
             game.surfaces[event.surface_index].create_entity{name = "grenade", target = event.position, position = event.position, force = "player", base_damage_modifiers = {damage_modifier = 0.43}}
@@ -351,7 +356,7 @@ function(event)
     end
 end
 )
-script.set_event_filter(defines.events.on_post_entity_died, {{filter = "type", type = "unit-spawner"}, {filter = "type", type = "land-mine"}})
+script.set_event_filter(defines.events.on_post_entity_died, {{filter = "type", type = "unit-spawner"}, {filter = "type", type = "unit"}, {filter = "type", type = "land-mine"}})
 -----------------------------------------------------------------------
 local on_unit_group_finished_gathering = function(event)
 	if storage.nested_recently == true then

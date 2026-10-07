@@ -10,6 +10,8 @@ server data under `factorio/`. The active scenario is **Legendary Deathworld**.
 | `control.lua` | Commands (`/reset`), lib registration via `event_handler.add_lib` |
 | `freeplay.lua` | Game lifecycle: new-player kit, ordinary respawns, in-game events (nesting, research logging, victory detection) |
 | `reset.lua` | Map lifecycle: dual-surface swap (`nauvis1`/`nauvis2` on the `nauvis2` planet), staged map reveal, dormant-surface pre-generation during the reroll/defeat countdown, fresh-round setup, surface events; the `nauvis` primary is a permanent dummy |
+| `ied-biters.lua` | Map modifier: a dying unit has a 50% chance to leave an enemy land mine on its tile if one fits; called from freeplay's `on_post_entity_died` (which owns that event and its filter); `/ied-biters <on\|off>` toggles it (stored in `storage.ied_biters`, off when unset) |
+| `spitter-turrets.lua` | Map modifier: a dying spitter has a 10% chance to leave an enemy gun turret of its quality, loaded by tier (small: 10 yellow, medium: 20 yellow, big: 10 red, behemoth: 20 uranium); called from freeplay's `on_post_entity_died`; `/spitter-turrets <on\|off>` toggles it (stored in `storage.spitter_turrets`, off when unset) |
 | `welcome.lua` | Join window shown to players |
 | `jail.lua` | Gulag: the pit surface, the jail records, escape prevention |
 | `groups.lua` | Permission groups and their commands: `/jail`, `/release`, `/freeze`, `/trust` |
