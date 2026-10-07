@@ -84,6 +84,17 @@ local next_round_name = function(name)
     return ROUND_SURFACES[1] -- a pre-swap round on the primary (or a pre-rename round) starts here
 end
 
+-- The worldgen template for round surfaces: the current surface's settings
+-- when it has them, else the host planet's prototype. Never template from the
+-- dummy primary -- the fork strips its map_gen_settings to keep it pristine,
+-- and bb templates from the planet prototype for the same reason.
+local round_settings = function(surface)
+    local mgs = surface and surface.map_gen_settings
+    if mgs then return mgs end
+    local planet = game.planets[PLANET]
+    return planet and planet.prototype and planet.prototype.map_gen_settings
+end
+
 -----------------------------------------------------------------------
 -- Staged map reveal: force-generate a small core area instantly (ground for
 -- crash site / turret), then force-generate fixed-size batches of chunks per
@@ -305,7 +316,7 @@ local start_pregen = function(chunks)
     local source = active_surface()
     local name = next_round_name(source.name)
     if game.surfaces[name] then return end
-    local mgs = source.map_gen_settings
+    local mgs = round_settings(source)
     mgs.seed = math.random(1111, 4294967295)
     storage.next_seed = mgs.seed
     game.create_surface(name, mgs)
@@ -922,7 +933,7 @@ Public.perform_reset = function(actor, seed)
         new_surface.map_gen_settings = mgs
         new_surface.clear(true)
     elseif not new_surface then
-        local mgs = old_surface.map_gen_settings
+        local mgs = round_settings(old_surface)
         mgs.seed = seed or math.random(1111, 4294967295)
         new_surface = game.create_surface(new_name, mgs)
     end
@@ -1031,7 +1042,7 @@ Public.on_init = function()
     -- saves skip this -- their round is still on the primary, and the first
     -- reset migrates it.
     local source = game.surfaces[PRIMARY_NAME]
-    local surface = game.create_surface(ROUND_SURFACES[1], source and source.map_gen_settings)
+    local surface = game.create_surface(ROUND_SURFACES[1], round_settings(source))
     local planet = game.planets[PLANET]
     if planet and not planet.surface then
         planet.associate_surface(surface)
