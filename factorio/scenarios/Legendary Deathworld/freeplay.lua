@@ -308,9 +308,10 @@ function(event)
         end
         -- Coordinates arrive as one prebuilt tag parameter so translators can
         -- place it anywhere in the sentence (or drop it) without touching
-        -- the two coordinates separately. localised_name is passed as a
-        -- LocalisedString, so the nest's name follows the player's locale.
-        local tag = string.format("[gps=%.1f,%.1f]", event.position.x, event.position.y)
+        -- the two coordinates separately. The surface rides in the tag so a
+        -- map-jump lands on the round surface, not the dummy primary.
+        local tag = string.format("[gps=%.1f,%.1f,%s]",
+            event.position.x, event.position.y, game.surfaces[event.surface_index].name)
         local nest = event.prototype.localised_name
         if killer then
             game.print({"ld-nest-killed", killer.name, tag, nest})
