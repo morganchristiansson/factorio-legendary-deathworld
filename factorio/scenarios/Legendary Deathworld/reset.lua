@@ -258,7 +258,10 @@ end
 -- One chunk per tick keeps the pre-gen hitch to a ~5ms tax when the reroll
 -- vote is on and a fast reroll can land at any moment; the defeat countdown
 -- spreads 9 chunks per 31 ticks over its 60s window for a gentler profile.
-local PREGEN_CHUNKS_REROLL, PREGEN_DELAY_REROLL = 1, 1
+-- Three chunks per three ticks is the same rate without on_nth_tick(1): a
+-- cadence-1 handler does not survive save/load cleanly and trips the
+-- script-event mismatch check when a player joins a restarted server.
+local PREGEN_CHUNKS_REROLL, PREGEN_DELAY_REROLL = 3, 3
 local PREGEN_CHUNKS_COUNTDOWN, PREGEN_DELAY_COUNTDOWN = 9, 31
 
 local on_pregen_tick = function()
