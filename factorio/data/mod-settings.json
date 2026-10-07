@@ -23,6 +23,12 @@
   "eon-remove-space-platform-restrictions": {
     "value": false
   },
+  "eon-nauvis2-clone": {
+    "value": true
+  },
+  "eon-restore-space-locations": {
+    "value": true
+  },
   "eon-holmium-ore": {
     "value": false
   },
