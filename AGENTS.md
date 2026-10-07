@@ -14,6 +14,7 @@ server data under `factorio/`. The active scenario is **Legendary Deathworld**.
 | `jail.lua` | Gulag: the pit surface, the jail records, escape prevention |
 | `groups.lua` | Permission groups and their commands: `/jail`, `/release`, `/freeze`, `/trust` |
 | `register.lua` | Transient registrations: one-shot tasks, the map reveal's `on_tick`, the expiry sweep and dynamic event filters — one module owns their save/load re-arming |
+| `shallow-water.lua` | Map modifier: swaps water for walkable shallow water/mud as round chunks generate; toggled by its one `add_lib` line in control.lua |
 
 **Boundary rule:** one-time setup/reset events belong in `reset.lua`; anything
 that happens during play stays in `freeplay.lua`. Player kit (`created_items`,

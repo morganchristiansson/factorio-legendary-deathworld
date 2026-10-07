@@ -9,6 +9,8 @@ handler.add_lib(require("jail"))
 handler.add_lib(groups)
 handler.add_lib(require("register"))
 
+handler.add_lib(require("shallow-water"))
+
 -- Command feedback goes only to the caller; the console keeps seeing it.
 local function reply(command, message)
     if command.player_index then
