@@ -1049,12 +1049,9 @@ Public.on_init = function()
     if planet and not planet.surface then
         planet.associate_surface(surface)
     end
-    if planet then
-        game.forces["player"].unlock_space_location(PLANET)
-    end
     -- The dummy primary hosts no round; planet.hidden (the fork) only hides it
     -- from the star map, so hide the surface from the surfaces panel the same
-    -- way the gulag is hidden.
+    -- way the gulag is hidden. Star-map discovery is the fork's job.
     game.forces["player"].set_surface_hidden(PRIMARY_NAME, true)
     storage.active_surface = surface.name
 end
@@ -1105,13 +1102,8 @@ Public.on_configuration_changed = function()
     -- Force resets wipe charts, so the dummy primary's old world goes black
     -- and nothing ever re-charts it; the fork's planet.hidden only hides it
     -- from the star map, so the surface is hidden from the surfaces panel the
-    -- same way the gulag is hidden.
+    -- same way the gulag is hidden. Star-map discovery is the fork's job.
     game.forces["player"].set_surface_hidden(PRIMARY_NAME, true)
-    -- The host planet must be discovered for its surfaces to group under it
-    -- in the map view; an undiscovered planet buckets them under "Other".
-    if game.planets[PLANET] then
-        game.forces["player"].unlock_space_location(PLANET)
-    end
     -- Deploy hygiene: a round-named surface that is planet-less and belongs
     -- to no in-flight swap is a stray -- a vote that failed after
     -- pre-generation completed, or an orphan from before a naming change.
