@@ -863,7 +863,14 @@ local on_player_joined = function(event)
     local target = active_surface()
     local character = player.character
     local misplaced = (not character or not character.valid) or player.surface.name ~= target.name
-    if misplaced then
+    -- A fresh joiner gets placed unconditionally (bb does the same): at
+    -- on_player_joined the engine has not finished deciding the character's
+    -- placement, and player.surface can already match the round surface
+    -- while the pending spawn still lands on the home planet's dummy surface.
+    local fresh = player.online_time == 0
+    if fresh or misplaced then
+        -- Detach first, then move charless (bb's order): the engine will not
+        -- fight us for the character slot and nothing is orphaned in place.
         if character and character.valid then
             player.character = nil
         end
