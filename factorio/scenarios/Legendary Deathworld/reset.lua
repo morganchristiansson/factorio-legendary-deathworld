@@ -868,7 +868,8 @@ local on_player_joined = function(event)
             player.character = nil
         end
         player.teleport({0, 0}, target)
-        local fresh = target.create_entity{name = "character", position = {0, 0}, force = "player"}
+        local spawn = target.find_non_colliding_position("character", {0, 0}, 4, 0.5) or {0, 0}
+        local fresh = target.create_entity{name = "character", position = spawn, force = "player"}
         if fresh then
             player.set_controller{type = defines.controllers.character, character = fresh}
             util.insert_safe(player, storage.created_items)
@@ -902,17 +903,15 @@ Public.perform_reset = function(actor, seed)
     local old_name = old_surface.name
     local migrating = (old_name == PRIMARY_NAME) -- a pre-swap save: round still on the primary
     local new_name = next_round_name(old_name)
-    -- The reroll (or defeat) countdown pre-generated the dormant surface with
-    -- its seed locked in; adopt it as-is. An explicit /reset seed overrides
-    -- the pre-generation: same name, but the seed changes and the
-    -- pre-generated chunks are cleared so the map regenerates from it.
+    -- Adopt the countdown's pre-generated dormant surface, or create fresh.
+    -- A surface holding the round's name that is NOT the marked dormant is a
+    -- stale leftover from a broken earlier swap, complete with the old
+    -- round's entities -- wiping it (and an explicit /reset seed does the
+    -- same) keeps the next round from piling onto the old crash site.
     local new_surface = game.surfaces[new_name]
-    if new_surface and seed then
-        storage.pregen_surface = nil
-        storage.pregen_index = nil
-        storage.next_seed = nil
+    if new_surface and (seed or storage.pregen_surface ~= new_name) then
         local mgs = new_surface.map_gen_settings
-        mgs.seed = seed
+        mgs.seed = seed or math.random(1111, 4294967295)
         new_surface.map_gen_settings = mgs
         new_surface.clear(true)
     elseif not new_surface then
@@ -941,7 +940,10 @@ Public.perform_reset = function(actor, seed)
                 player.character = nil
             end
             player.teleport({0, 0}, new_surface)
-            local fresh = new_surface.create_entity{name = "character", position = {0, 0}, force = "player"}
+            -- Everyone lands around the spawn point, not on the same tile:
+            -- overlapping characters block each other and cannot move apart.
+            local spawn = new_surface.find_non_colliding_position("character", {0, 0}, 4, 0.5) or {0, 0}
+            local fresh = new_surface.create_entity{name = "character", position = spawn, force = "player"}
             if fresh then
                 player.set_controller{type = defines.controllers.character, character = fresh}
                 util.insert_safe(player, storage.created_items)
