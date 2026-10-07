@@ -881,10 +881,11 @@ local on_player_joined = function(event)
     -- while the pending spawn still lands on the home planet's dummy surface.
     local fresh = player.online_time == 0
     if fresh or misplaced then
-        -- Detach first, then move charless (bb's order): the engine will not
-        -- fight us for the character slot and nothing is orphaned in place.
+        -- First-timers often arrive with a character already on the dummy
+        -- primary; the surface is never deleted, so a detached one would sit
+        -- there permanently -- destroy instead of detach (bb does the same).
         if character and character.valid then
-            player.character = nil
+            player.character.destroy()
         end
         player.teleport({0, 0}, target)
         local spawn = target.find_non_colliding_position("character", {0, 0}, 4, 0.5) or {0, 0}
