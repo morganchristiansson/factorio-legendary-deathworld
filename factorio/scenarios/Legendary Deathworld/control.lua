@@ -2,6 +2,7 @@ local handler = require("event_handler")
 local reset = require("reset")
 local jail = require("jail")
 local groups = require("groups")
+local ied_biters = require("ied-biters")
 handler.add_lib(require("freeplay"))
 handler.add_lib(require("welcome"))
 handler.add_lib(require("reset"))
@@ -126,6 +127,20 @@ commands.add_command("spectate-mode", "Enable or disable spectator permissions. 
     local enabled = mode == "on"
     groups.set_default_spectate(enabled)
     game.print("Default spectator mode is now " .. (enabled and "on" or "off") .. ".")
+end)
+
+commands.add_command("ied-biters", "Turn land mines dropped by dying biters on or off. Usage: /ied-biters <on|off>", function(command)
+    local mode, actor = admin_target(command, "/ied-biters <on|off>")
+    if not mode then
+        return
+    end
+    mode = mode:lower()
+    if mode ~= "on" and mode ~= "off" then
+        reply(command, "Usage: /ied-biters <on|off>")
+        return
+    end
+    ied_biters.set_enabled(mode == "on")
+    game.print("IED biters are now " .. mode .. " (" .. actor .. ").")
 end)
 
 -- TEMPORARY test command: delete once the loss sequence no longer needs
