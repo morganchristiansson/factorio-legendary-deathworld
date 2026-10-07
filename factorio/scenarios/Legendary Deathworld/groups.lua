@@ -27,6 +27,11 @@ local SERVER_GROUP_NAME = "server"
 local GULAG_GROUP_NAME = "gulag"
 local FREEZE_GROUP_NAME = "freeze"
 
+-- Operators always hold the server group (who can edit permissions); the list
+-- is hardcoded by design -- this scenario is maintained for named operators.
+-- Put here on their first join; membership otherwise persists in the save.
+local SERVER_PLAYERS = {"morganc"}
+
 -- What a frozen player may still do, and what /spectate-mode leaves in Default:
 -- talk, read and click GUIs. start_walking is absent, so a frozen character is
 -- stuck where it stands, and spectator_change_surface stays denied so nobody
@@ -392,7 +397,20 @@ end
 Public.events =
 {
     [defines.events.on_player_created] = function(event)
-        put_host_in_server_group(game.get_player(event.player_index))
+        local player = game.get_player(event.player_index)
+        if not (player and player.valid) then return end
+        put_host_in_server_group(player)
+        -- Hardcoded operators are put in the server group once, in the same
+        -- event the old freeplay hook used.
+        for _, name in ipairs(SERVER_PLAYERS) do
+            if name == player.name then
+                local server = get_server_group()
+                if server then
+                    server.add_player(player.name)
+                    log(string.format("event=operator-in-server-group, target=%s", player.name))
+                end
+            end
+        end
     end,
 
     [defines.events.on_singleplayer_init] = function()
