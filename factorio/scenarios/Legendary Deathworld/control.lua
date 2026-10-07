@@ -3,6 +3,7 @@ local reset = require("reset")
 local jail = require("jail")
 local groups = require("groups")
 local ied_biters = require("ied-biters")
+local spitter_turrets = require("spitter-turrets")
 handler.add_lib(require("freeplay"))
 handler.add_lib(require("welcome"))
 handler.add_lib(require("reset"))
@@ -141,6 +142,20 @@ commands.add_command("ied-biters", "Turn land mines dropped by dying biters on o
     end
     ied_biters.set_enabled(mode == "on")
     game.print("IED biters are now " .. mode .. " (" .. actor .. ").")
+end)
+
+commands.add_command("spitter-turrets", "Turn enemy gun turrets dropped by dying spitters on or off. Usage: /spitter-turrets <on|off>", function(command)
+    local mode, actor = admin_target(command, "/spitter-turrets <on|off>")
+    if not mode then
+        return
+    end
+    mode = mode:lower()
+    if mode ~= "on" and mode ~= "off" then
+        reply(command, "Usage: /spitter-turrets <on|off>")
+        return
+    end
+    spitter_turrets.set_enabled(mode == "on")
+    game.print("Spitter turrets are now " .. mode .. " (" .. actor .. ").")
 end)
 
 -- TEMPORARY test command: delete once the loss sequence no longer needs

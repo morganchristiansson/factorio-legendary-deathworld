@@ -3,6 +3,7 @@ local reset = require("reset")
 local jail = require("jail")
 local register = require("register")
 local ied_biters = require("ied-biters")
+local spitter_turrets = require("spitter-turrets")
 
 -- The kit, given at spawn and on every death respawn. They used to differ --
 -- spawn got ten magazines, a respawn got none -- because a second player could
@@ -346,6 +347,7 @@ function(event)
         end
     elseif event.prototype.type == "unit" then
         ied_biters.on_unit_died(event)
+        spitter_turrets.on_unit_died(event)
     else
         if math.random(1, 10) == 1 then
             game.surfaces[event.surface_index].create_entity{name = "grenade", target = event.position, position = event.position, force = "player", base_damage_modifiers = {damage_modifier = 0.43}}
