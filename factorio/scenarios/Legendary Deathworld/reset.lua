@@ -537,10 +537,12 @@ local DEFEAT_COUNTDOWN = 60
 local DEFEAT_BASE_COUNT = 3
 local SPAWN_BOX = {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}}
 
--- What the box holds so far -- turrets and nests both -- is both the trigger
--- and what the cutscene flies over.
+-- The colony in the box: nests and enemy worm turrets. Player turrets are
+-- the defence being overrun, not part of the colony -- the force filter is
+-- what keeps them out, since gun/laser turrets share the "turret" type with
+-- the worms.
 local base_in_spawn_box = function()
-    return active_surface().find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}}
+    return active_surface().find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}, force = "enemy"}
 end
 
 -- The widest shot the engine still renders as the world instead of
