@@ -32,15 +32,20 @@ local function make_group(name)
     local group = {name = name, members = {}, allows = {}}
     function group.set_allows_action(action, value) group.allows[action] = value end
     function group.allows_action(action) return group.allows[action] == true end
-    -- The engine moves the player's group pointer, raises the edit event and
-    -- reports whether the write landed. The stub does all three, or nothing
-    -- downstream sees the change and set_group has nothing to check.
+    -- The engine moves the player's group pointer, raises the edit events and
+    -- reports whether the write landed. add_player is implemented as
+    -- remove-from-old-then-add-to-new (two events), exactly like the engine;
+    -- the stub does all of it, or nothing downstream sees the change.
     function group.add_player(player_name)
         if stub.refuse_adds then
             return false
         end
-        group.members[player_name] = true
         local player = players[player_name]
+        local old_group = player and player.permission_group
+        if old_group and old_group ~= group then
+            old_group.remove_player(player_name)
+        end
+        group.members[player_name] = true
         if not player then
             return true
         end

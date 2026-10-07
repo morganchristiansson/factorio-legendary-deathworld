@@ -250,14 +250,23 @@ Public.events =
         local jailed = get_jailed_table()
         local data = jailed[moved.name]
         local group = moved.permission_group and moved.permission_group.name
+        -- The changed group, not the player's transient one. The engine
+        -- implements group.add_player as remove-from-old then add-to-new, so
+        -- a jail-in arrives as two events; keying the release branch on the
+        -- removed group keeps that transition from reading as a release and
+        -- clearing the record (the first-jail-no-teleport bug).
+        local changed_group = event.group and event.group.name
         if group == GULAG_GROUP_NAME then
+            -- Landed in the pit: membership is the ground truth, the record
+            -- may already be gone (cleared by the old release branch during
+            -- the transition).
+            teleport_to_gulag(moved)
+        elseif event.type == "remove-player" and changed_group == GULAG_GROUP_NAME then
+            -- Out of the pit -- only a remove FROM the gulag is a real
+            -- release (jail and /release both route through here).
             if data then
-                teleport_to_gulag(moved)
+                teleport_from_gulag(moved, data)
             end
-        elseif data then
-            -- Out of the pit, whether that was /free or being frozen: back to
-            -- where they were taken from either way.
-            teleport_from_gulag(moved, data)
             jailed[moved.name] = nil
         elseif event.type == "add-player" then
             -- A freeze has no body to move, but the map view is the same
