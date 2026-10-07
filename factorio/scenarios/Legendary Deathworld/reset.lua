@@ -26,6 +26,7 @@
 -- until the first reset (perform_reset's migration branch).
 
 local util = require("util")
+local mod_gui = require("mod-gui")
 local crash_site = require("crash-site")
 local jail = require("jail")
 local groups = require("groups")
@@ -377,6 +378,8 @@ local REROLL_DURATION = 90
 local REROLL_FRAME = "ld_reroll_frame"
 local REROLL_YES = "ld_reroll_yes"
 local REROLL_NO = "ld_reroll_no"
+local REROLL_ABSTAIN = "ld_reroll_abstain"
+local REROLL_TOGGLE = "ld_reroll_toggle"
 
 -- Loss countdown: same top-of-screen frame as the reroll vote, no buttons.
 -- Drawn and ticked by the defeat sequence further down.
@@ -417,30 +420,168 @@ local reroll_stats = function()
     return math.floor(100 * yes / total), yes, total - yes
 end
 
+local format_time_left = function()
+    local seconds = storage.reroll_time_left or 0
+    return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+local reroll_results = function()
+    local _, yes_votes, no_votes = reroll_stats()
+    return {"ld-reroll-stats", no_votes, yes_votes, format_time_left()}
+end
+
+local button_flow_child = function(player, name)
+    local top = player.gui.top.mod_gui_top_frame
+    local flow = top and top.mod_gui_inner_frame
+    return flow and flow[name]
+end
+
+local reroll_frame = function(player)
+    return button_flow_child(player, REROLL_FRAME)
+end
+
+local add_vote_row = function(parent)
+    local row = parent.add{type = "table", name = "row", column_count = 5, vertical_centering = true}
+    local caption = row.add{type = "label", name = "reroll_caption", caption = {"ld-reroll-caption"}}
+    caption.style.font = "heading-2"
+    local results = row.add{type = "label", name = "reroll_stats", caption = reroll_results()}
+    results.style.font = "heading-2"
+    row.add{type = "button", name = REROLL_NO, caption = {"ld-reroll-no"}, style = "red_back_button"}
+    row.add{type = "button", name = REROLL_ABSTAIN, caption = {"ld-reroll-abstain"}, style = "dialog_button"}
+    row.add{type = "button", name = REROLL_YES, caption = {"ld-reroll-yes"}, style = "confirm_button_without_tooltip"}
+end
+
 local draw_reroll_gui = function(player)
-    if player.gui.top[REROLL_FRAME] then return end
-    local frame = player.gui.top.add{type = "frame", name = REROLL_FRAME}
-    local flow = frame.add{type = "flow", name = "flow", direction = "horizontal"}
-    local caption = flow.add{type = "label", name = "reroll_caption", caption = {"ld-reroll-caption", storage.reroll_time_left}}
-    caption.style.minimal_width = 120
-    caption.style.maximal_width = 120
-    local no_button = flow.add{type = "button", name = REROLL_NO, caption = "No", style = "red_back_button"}
-    no_button.style.minimal_width = 56
-    no_button.style.maximal_width = 56
-    local yes_button = flow.add{type = "button", name = REROLL_YES, caption = "Yes", style = "confirm_button"}
-    yes_button.style.minimal_width = 56
-    yes_button.style.maximal_width = 56
-    local percent, yes_votes, no_votes = reroll_stats()
-    flow.add{type = "label", name = "reroll_stats", caption = {"ld-reroll-stats", no_votes, yes_votes, percent}}
+    local button_flow = mod_gui.get_button_flow(player)
+    if not button_flow[REROLL_TOGGLE] then
+        button_flow.add{type = "sprite-button", name = REROLL_TOGGLE, sprite = "utility/reset_white", tooltip = {"ld-reroll-toggle-tooltip"}, style = "slot_button"}
+    end
+    if reroll_frame(player) then return end
+    local frame = button_flow.add{type = "flow", name = REROLL_FRAME, direction = "horizontal"}
+    frame.style.vertical_align = "center"
+    frame.style.vertically_stretchable = true
+    add_vote_row(frame)
+end
+
+local vote_caption = function(name)
+    local vote = storage.reroll_votes[name]
+    if vote == 1 then return {"ld-reroll-yes"} end
+    if vote == 0 then return {"ld-reroll-no"} end
+    return {"ld-reroll-abstained"}
+end
+
+local fill_vote_list = function(list)
+    list.clear()
+    for _, player in pairs(game.connected_players) do
+        local frame = list.add{type = "frame", direction = "horizontal"}
+        frame.style.horizontally_stretchable = true
+        frame.style.vertical_align = "center"
+        local flow = frame.add{type = "flow", direction = "horizontal"}
+        flow.style.horizontally_stretchable = true
+        flow.style.vertical_align = "center"
+        local name = flow.add{type = "label", caption = player.name}
+        name.style.width = 160
+        flow.add{type = "label", style = "subheader_caption_label", caption = {"ld-reroll-voted"}}
+        flow.add{type = "label", caption = vote_caption(player.name)}
+    end
+end
+
+Public.is_reroll_active = function()
+    return storage.reroll_votes ~= nil
+end
+
+local fill_vote_header = function(header)
+    header.clear()
+    if not storage.reroll_votes then
+        local idle = header.add{type = "label", caption = {"ld-reroll-idle"}}
+        idle.style.single_line = false
+        idle.style.maximal_width = 500
+        return
+    end
+    local _, yes_votes, no_votes = reroll_stats()
+    header.add{type = "label", style = "subheader_caption_label", caption = {"ld-reroll-time-left"}}
+    header.add{type = "label", name = "time_left", caption = format_time_left()}
+    header.add{type = "label", style = "subheader_caption_label", caption = {"ld-reroll-yes-votes"}}
+    header.add{type = "label", name = "yes_votes", caption = tostring(yes_votes)}
+    header.add{type = "label", style = "subheader_caption_label", caption = {"ld-reroll-no-votes"}}
+    header.add{type = "label", name = "no_votes", caption = tostring(no_votes)}
+end
+
+local fill_vote_buttons = function(buttons)
+    buttons.clear()
+    local active = storage.reroll_votes ~= nil
+    buttons.add{type = "button", name = REROLL_NO, caption = {"ld-reroll-no"}, style = "red_back_button", enabled = active}
+    buttons.add{type = "button", name = REROLL_ABSTAIN, caption = {"ld-reroll-abstain"}, style = "dialog_button", enabled = active}
+    buttons.add{type = "button", name = REROLL_YES, caption = {"ld-reroll-yes"}, style = "confirm_button", enabled = active}
+end
+
+Public.fill_vote_window = function(player, tab, buttons)
+    storage.reroll_windows = storage.reroll_windows or {}
+    storage.reroll_windows[player.index] = {tab = tab, buttons = buttons}
+    tab.clear()
+    local header = tab.add{type = "flow", direction = "horizontal", name = "header"}
+    header.style.vertical_align = "center"
+    fill_vote_header(header)
+    local list = tab.add{type = "scroll-pane", style = "deep_scroll_pane", name = "players"}
+    list.style.horizontally_stretchable = true
+    list.style.vertically_stretchable = true
+    list.style.maximal_height = 360
+    if storage.reroll_votes then
+        fill_vote_list(list)
+    end
+    fill_vote_buttons(buttons)
+end
+
+local vote_windows = function()
+    local windows = {}
+    for index, window in pairs(storage.reroll_windows or {}) do
+        if window.tab.valid and window.buttons.valid then
+            windows[index] = window
+        else
+            storage.reroll_windows[index] = nil
+        end
+    end
+    return windows
+end
+
+local redraw_vote_windows = function()
+    for index, window in pairs(vote_windows()) do
+        Public.fill_vote_window(game.get_player(index), window.tab, window.buttons)
+    end
+end
+
+local refresh_vote_ui = function(lists)
+    local results = reroll_results()
+    for _, player in pairs(game.connected_players) do
+        local frame = reroll_frame(player)
+        if frame then
+            frame.row.reroll_stats.caption = results
+        end
+    end
+    local _, yes_votes, no_votes = reroll_stats()
+    for _, window in pairs(vote_windows()) do
+        local header = window.tab.header
+        if header and header.time_left then
+            header.time_left.caption = format_time_left()
+            header.yes_votes.caption = tostring(yes_votes)
+            header.no_votes.caption = tostring(no_votes)
+        end
+        if lists and window.tab.players then
+            fill_vote_list(window.tab.players)
+        end
+    end
 end
 
 local stop_reroll_vote = function()
     storage.reroll_votes = nil
     storage.reroll_time_left = nil
     for _, player in pairs(game.players) do
-        local frame = player.gui.top[REROLL_FRAME]
+        local frame = reroll_frame(player) or player.gui.top[REROLL_FRAME]
         if frame then frame.destroy() end
+        local toggle = button_flow_child(player, REROLL_TOGGLE)
+        if toggle then toggle.destroy() end
     end
+    redraw_vote_windows()
 end
 
 local start_reroll_vote = function()
@@ -455,6 +596,7 @@ local start_reroll_vote = function()
     for _, player in pairs(game.connected_players) do
         draw_reroll_gui(player)
     end
+    redraw_vote_windows()
     -- Pre-generate the next round's surface while the vote runs; the batch
     -- driver idles until the round's own reveal has finished. Aggressive
     -- rate: rerolls can resolve early and the map must be ready when they do.
@@ -495,14 +637,14 @@ local on_reroll_second = function()
     if not storage.reroll_votes then return end
     storage.reroll_time_left = storage.reroll_time_left - 1
     if storage.reroll_time_left > 0 then
-        local percent, yes_votes, no_votes = reroll_stats()
         for _, player in pairs(game.connected_players) do
-            local frame = player.gui.top[REROLL_FRAME]
-            if frame and frame.valid then
-                frame.flow.reroll_caption.caption = {"ld-reroll-caption", storage.reroll_time_left}
-                frame.flow.reroll_stats.caption = {"ld-reroll-stats", no_votes, yes_votes, percent}
+            local legacy = player.gui.top[REROLL_FRAME]
+            if legacy then
+                legacy.destroy()
+                draw_reroll_gui(player)
             end
         end
+        refresh_vote_ui(false)
         return
     end
     local _, yes_votes, no_votes = reroll_stats()
@@ -699,10 +841,21 @@ script.on_nth_tick(60, on_periodic_second)
 local on_reroll_click = function(event)
     if not storage.reroll_votes then return end
     if not (event.element and event.element.valid) then return end
-    if event.element.name ~= REROLL_YES and event.element.name ~= REROLL_NO then return end
+    local name = event.element.name
+    if name == REROLL_TOGGLE then
+        local frame = reroll_frame(game.get_player(event.player_index))
+        if frame then frame.visible = not frame.visible end
+        return
+    end
+    if name ~= REROLL_YES and name ~= REROLL_NO and name ~= REROLL_ABSTAIN then return end
     local player = game.get_player(event.player_index)
     if not (player and player.valid) then return end
-    storage.reroll_votes[player.name] = (event.element.name == REROLL_YES) and 1 or 0
+    if name == REROLL_ABSTAIN then
+        storage.reroll_votes[player.name] = nil
+        refresh_vote_ui(true)
+        return
+    end
+    storage.reroll_votes[player.name] = (name == REROLL_YES) and 1 or 0
     -- A strict majority of connected players either way decides the vote at
     -- once: the remaining ballots can no longer flip the result. The timer
     -- below is the looser bar (majority of ballots cast), hence the early flag
@@ -715,6 +868,8 @@ local on_reroll_click = function(event)
         pass_reroll_vote("majority")
     elseif no * 2 > #game.connected_players then
         fail_reroll_vote("majority")
+    else
+        refresh_vote_ui(true)
     end
 end
 
@@ -722,6 +877,12 @@ local on_reroll_join = function(event)
     if not storage.reroll_votes then return end
     local player = game.get_player(event.player_index)
     if player and player.valid then draw_reroll_gui(player) end
+    refresh_vote_ui(true)
+end
+
+local on_reroll_left = function()
+    if not storage.reroll_votes then return end
+    refresh_vote_ui(true)
 end
 
 -- The swap's second half, in one place: associate the fresh surface with the
@@ -1014,6 +1175,7 @@ Public.events =
   [defines.events.on_cutscene_finished] = on_cutscene_end,
   [defines.events.on_cutscene_cancelled] = on_cutscene_end,
   [defines.events.on_gui_click] = on_reroll_click,
+  [defines.events.on_player_left_game] = on_reroll_left,
   [defines.events.on_player_joined_game] = on_player_joined,
 }
 Public.on_init = function()
