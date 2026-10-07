@@ -88,13 +88,18 @@ end
 -- prototype. The fork strips the dummy primary's settings and the vanilla
 -- proto of their autoplace controls (kept non-nil, so a nil-check misses it),
 -- making surface-sourced templates render empty grass; the cloned host proto
--- is the fork's own intended worldgen. Copied so the per-round seed never
--- mutates the shared prototype table.
+-- is the fork's own intended worldgen. A shallow copy keeps the per-round
+-- seed mutation off the shared prototype without deep-copying the whole
+-- worldgen table each reset.
 local round_settings = function(surface)
     local planet = game.planets[PLANET]
     local proto = planet and planet.prototype and planet.prototype.map_gen_settings
     if proto then
-        return util.copy(proto)
+        local mgs = {}
+        for key, value in pairs(proto) do
+            mgs[key] = value
+        end
+        return mgs
     end
     return surface and surface.map_gen_settings
 end
