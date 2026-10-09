@@ -3,6 +3,8 @@
 -- (Similar to the map intro in the Biter Battles scenario.)
 
 local groups = require("groups")
+local reset = require("reset")
+local mod_gui = require("mod-gui")
 
 local Public = {}
 
@@ -56,13 +58,39 @@ function Public.show(player)
     tooltip = {"ld-welcome-close-tooltip"}
   }
 
-  -- Body
-  local content = frame.add{type = "frame", style = "inside_shallow_frame_with_padding", direction = "vertical"}
-  local flow = content.add{type = "flow", direction = "vertical"}
-  flow.style.width = 520
-  flow.style.padding = 12
-  local label = flow.add{type = "label", caption = {"ld-welcome-text"}}
+  local inner_frame = frame.add{type = "frame", style = "inside_deep_frame", name = "inner_frame", direction = "vertical"}
+  local tabbed_pane = inner_frame.add{type = "tabbed-pane", name = "tabbed_pane"}
+  tabbed_pane.style.horizontally_stretchable = true
+
+  local vote = tabbed_pane.add{type = "tab", caption = {"ld-tab-vote"}}
+  local vote_content = tabbed_pane.add{type = "flow", style = "inset_frame_container_vertical_flow", name = "vote_tab", direction = "vertical"}
+  vote_content.style.padding = 10
+  vote_content.style.horizontally_stretchable = true
+  vote_content.style.vertically_stretchable = true
+
+  local about = tabbed_pane.add{type = "tab", caption = {"ld-tab-about"}}
+  local about_content = tabbed_pane.add{type = "flow", style = "inset_frame_container_vertical_flow", name = "about_tab", direction = "vertical"}
+  about_content.style.padding = 10
+  local about_scroll = about_content.add{type = "scroll-pane", style = "deep_scroll_pane", name = "scroll_pane", horizontal_scroll_policy = "never"}
+  about_scroll.style.horizontally_stretchable = true
+  about_scroll.style.maximal_height = 360
+  about_scroll.style.padding = 8
+  local label = about_scroll.add{type = "label", caption = {"ld-welcome-text"}}
   label.style.single_line = false
+  label.style.width = 500
+
+  tabbed_pane.add_tab(vote, vote_content)
+  tabbed_pane.add_tab(about, about_content)
+  tabbed_pane.selected_tab_index = reset.is_reroll_active() and 1 or 2
+
+  local bottom_buttons = frame.add{type = "flow", style = "dialog_buttons_horizontal_flow", name = "bottom_buttons"}
+  local filler = bottom_buttons.add{type = "empty-widget", style = "draggable_space"}
+  filler.style.horizontally_stretchable = true
+  filler.style.vertically_stretchable = true
+  filler.drag_target = frame
+  local vote_buttons = bottom_buttons.add{type = "flow", direction = "horizontal", name = "vote_buttons"}
+  reset.fill_vote_window(player, vote_content, vote_buttons)
+  bottom_buttons.visible = tabbed_pane.selected_tab_index == 1
 end
 
 local function toggle(player)
@@ -75,15 +103,20 @@ end
 
 local function ensure_button(player)
   if player.gui.top[BUTTON_NAME] then
+    player.gui.top[BUTTON_NAME].destroy()
+  end
+  local flow = mod_gui.get_button_flow(player)
+  if flow[BUTTON_NAME] then
     return
   end
-  player.gui.top.add
+  flow.add
   {
     type = "sprite-button",
     name = BUTTON_NAME,
     sprite = "utility/custom_tag_icon",
     tooltip = {"ld-welcome-button-tooltip"},
-    style = "slot_button"
+    style = "slot_button",
+    index = 1
   }
 end
 
@@ -115,7 +148,22 @@ Public.events =
     end
   end,
 
+  [defines.events.on_gui_selected_tab_changed] = function(event)
+    local tabbed_pane = event.element
+    if not (tabbed_pane and tabbed_pane.valid and tabbed_pane.name == "tabbed_pane") then
+      return
+    end
+    local frame = tabbed_pane.parent and tabbed_pane.parent.parent
+    if not (frame and frame.name == FRAME_NAME) then
+      return
+    end
+    frame.bottom_buttons.visible = tabbed_pane.selected_tab_index == 1
+  end,
+
   [defines.events.on_gui_click] = function(event)
+    if not (event.element and event.element.valid) then
+      return
+    end
     local player = game.get_player(event.player_index)
     if not player or not player.valid then
       return

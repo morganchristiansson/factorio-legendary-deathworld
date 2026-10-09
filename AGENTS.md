@@ -9,8 +9,8 @@ server data under `factorio/`. The active scenario is **Legendary Deathworld**.
 |---|---|
 | `control.lua` | Commands (`/reset`), lib registration via `event_handler.add_lib` |
 | `freeplay.lua` | Game lifecycle: new-player kit, ordinary respawns, in-game events (nesting, research logging, victory detection) |
-| `reset.lua` | Map lifecycle: dual-surface swap (`nauvis1`/`nauvis2` on the `nauvis2` planet), staged map reveal, dormant-surface pre-generation during the reroll/defeat countdown, fresh-round setup, surface events; the `nauvis` primary is a permanent dummy |
-| `welcome.lua` | Join window shown to players |
+| `reset.lua` | Map lifecycle: dual-surface swap (`nauvis1`/`nauvis2` on the `nauvis2` planet), staged map reveal, dormant-surface pre-generation during the reroll/defeat countdown, fresh-round setup, surface events; the `nauvis` primary is a permanent dummy; the reroll vote bar and the Vote tab content |
+| `welcome.lua` | Info window (Vote and About tabs) shown on join and from the top-bar button; the vote content itself is drawn by `reset.lua` |
 | `jail.lua` | Gulag: the pit surface, the jail records, escape prevention |
 | `groups.lua` | Permission groups and their commands: `/jail`, `/release`, `/freeze`, `/trust` |
 | `register.lua` | Transient registrations: one-shot tasks, the map reveal's `on_tick`, the expiry sweep and dynamic event filters — one module owns their save/load re-arming |
