@@ -462,6 +462,7 @@ local evo_stages = {
         game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.125
         game.map_settings.enemy_evolution.time_factor = 0.0004
     end},
+    {0.90, "ld-evo-milestone-90"},
     {0.95, "ld-evo-milestone-95", function()
         game.map_settings.enemy_evolution.time_factor = 0.0008
     end},
@@ -490,7 +491,7 @@ script.on_nth_tick(3600, function()
     for i, stage in ipairs(evo_stages) do
         if evo >= stage[1] and storage.evo_stage < i then
             storage.evo_stage = i
-            stage[3]()
+            if stage[3] then stage[3]() end
             game.print({"ld-announcement", {stage[2]}})
             log(string.format("event=evo-stage, evolution=%.2f", stage[1]))
         end
