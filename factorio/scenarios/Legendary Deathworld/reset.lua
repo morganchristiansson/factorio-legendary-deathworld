@@ -84,16 +84,69 @@ local next_round_name = function(name)
     return ROUND_SURFACES[1] -- a pre-swap round on the primary (or a pre-rename round) starts here
 end
 
--- The worldgen template for every round surface: the host planet's
--- prototype. The fork strips the dummy primary's settings and the vanilla
--- proto of their autoplace controls (kept non-nil, so a nil-check misses it),
--- making surface-sourced templates render empty grass; the cloned host proto
--- is the fork's own intended worldgen. Only the seed is written on it, the
--- same shape bb uses, so the shared table stays valid between rounds.
-local round_settings = function(surface)
+-- The round-worldgen template lives in storage so it can be adjusted and
+-- future rounds inherit the adjustment: a runtime create_surface inherits
+-- nothing on its own -- the planet prototype is read-only at runtime
+-- (probe: "No modifications of LuaSpaceLocationPrototype"), planet
+-- create_surface uses the same proto, and the launch JSON's
+-- property_expression_names are not retained anywhere reachable (probe:
+-- game.default_map_gen_settings keeps only autoplace_controls plus a few
+-- top-level fields; its property_expression_names is empty). So the template
+-- is deep-copied from the flag's survivor table, the clone proto supplies
+-- what the flag reader dropped (property binds, entity settings that must be
+-- baked at surface creation, territory, and proto-only controls like
+-- ammonia_ocean), and the scenario's own property overrides mirroring
+-- factorio/data/map-gen-settings.json top it off.
+-- tools/apply-map-settings patches the same storage table, so live
+-- adjustments carry into the next round.
+local seed_current_map_gen_settings = function(surface)
+    -- One deep copy of the clone proto: the fork's complete worldgen --
+    -- terrain binds, entity settings, territory, climate controls and every
+    -- autoplace control, including proto-only ones like ammonia_ocean that
+    -- the launch config never lists.
     local planet = game.planets[PLANET]
-    return planet and planet.prototype and planet.prototype.map_gen_settings
+    local proto = planet and planet.prototype and planet.prototype.map_gen_settings
         or surface and surface.map_gen_settings
+    local mgs = table.deepcopy(proto) or {}
+    mgs.autoplace_controls = mgs.autoplace_controls or {}
+    -- Overlay the launch config's retained fields: its autoplace_controls
+    -- (frequencies, gleba_enemy_base, scrap, water), enable-all and the
+    -- starting area. Flag values win on overlap; controls only the proto
+    -- carries keep the proto's values.
+    local preset = game.default_map_gen_settings
+    if preset then
+        -- Add-or-merge into mgs's own (plain) tables: flag values win on
+        -- overlap, controls only the proto carries keep the proto's values.
+        -- (table.deepcopy of engine LuaStructs is safe -- the probe shows it
+        -- yields plain detached tables, no metatable -- but add-or-merge is
+        -- simpler: control values are plain numbers.)
+        for ctrl, vals in pairs(preset.autoplace_controls or {}) do
+            local slot = mgs.autoplace_controls[ctrl]
+            if slot == nil then
+                slot = {}
+                mgs.autoplace_controls[ctrl] = slot
+            end
+            for k, v in pairs(vals) do slot[k] = v end
+        end
+        if preset.default_enable_all_autoplace_controls ~= nil then
+            mgs.default_enable_all_autoplace_controls = preset.default_enable_all_autoplace_controls
+        end
+        if preset.starting_area ~= nil then
+            mgs.starting_area = preset.starting_area
+        end
+    end
+    -- Property overrides the flag reader drops (probed): the scenario's map
+    -- tuning from map-gen-settings.json.
+    mgs.property_expression_names = mgs.property_expression_names or {}
+    mgs.property_expression_names["entity:gleba-spawner:probability"] = 0
+    mgs.property_expression_names["eon_gleba_south_offset"] = 500
+    mgs.property_expression_names["control:moisture:bias"] = 2
+    storage.current_map_gen_settings = mgs
+    return mgs
+end
+
+local round_settings = function(surface)
+    return storage.current_map_gen_settings or seed_current_map_gen_settings(surface)
 end
 
 -----------------------------------------------------------------------
@@ -930,14 +983,23 @@ Public.perform_reset = function(actor, seed)
     -- round's entities -- wiping it (and an explicit /reset seed does the
     -- same) keeps the next round from piling onto the old crash site.
     local new_surface = game.surfaces[new_name]
-    if new_surface and (seed or storage.pregen_surface ~= new_name) then
-        local mgs = new_surface.map_gen_settings
-        mgs.seed = seed or math.random(1111, 4294967295)
-        new_surface.map_gen_settings = mgs
-        new_surface.clear(true)
-    elseif not new_surface then
+    -- One path for every reset: the round gets a seed -- the given one, the
+    -- countdown's pre-gen seed (storage.next_seed) when that surface is
+    -- adopted, else random -- and the surface under the next round name is
+    -- rebuilt from the template unless it already IS that seed's map. Only
+    -- the countdown's own dormant surface qualifies (it was generated with
+    -- storage.next_seed); anything else -- an explicit /reset seed, a stale
+    -- leftover from a broken earlier swap, a pre-gen interrupted and
+    -- restarted -- is deleted and created fresh, so a chosen seed really
+    -- produces that seed's map and no round piles onto old terrain.
+    local round_seed = seed or storage.next_seed or math.random(1111, 4294967295)
+    if new_surface and not (storage.pregen_surface == new_name and round_seed == storage.next_seed) then
+        game.delete_surface(new_surface)
+        new_surface = nil
+    end
+    if not new_surface then
         local mgs = round_settings(old_surface)
-        mgs.seed = seed or math.random(1111, 4294967295)
+        mgs.seed = round_seed
         new_surface = game.create_surface(new_name, mgs)
     end
     storage.pregen_surface = nil

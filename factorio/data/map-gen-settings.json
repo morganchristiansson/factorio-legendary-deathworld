@@ -1,4 +1,5 @@
-{"default_enable_all_autoplace_controls":true, "autoplace_controls":{
+{"default_enable_all_autoplace_controls":false,
+"autoplace_controls":{
 "calcite":{"frequency":1.33,"size":1,"richness":0.75},
 "coal":{"frequency":6,"size":1,"richness":1},
 "copper-ore":{"frequency":6,"size":1,"richness":1},
@@ -25,6 +26,7 @@
   "eon_gleba_south_offset": 500,
   "entity:gleba-spawner:probability": 0,
   "moisture": "eon_moisture_blended",
+  "control:moisture:bias": 2,
   "aux": "eon_aux_blended",
   "elevation": "eon_elevation_blended",
   "cliff_elevation": "eon_cliff_elevation",

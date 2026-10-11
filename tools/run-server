@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# Run a Factorio server reliably for common tasks (probes, local tests, the
+# live LDW boot). Hard-wraps the pitfalls found in the probe sessions:
+#
+#   * /factorio is mounted read-only, and the game insists on writing
+#     mod-settings/mod-list back into --mod-directory -- which is
+#     intermittently FATAL (writeModlist exception -> Goodbye). So the runner
+#     stages a writable copy of the ENABLED mods (per mod-list.json) into a
+#     temp dir and boots against that.
+#   * Scenario lookup for --start-server-load-scenario resolves under the
+#     write-data scenarios dir, so the requested scenario is staged there.
+#   * server-settings.json must carry the full envelope (a trimmed one aborts
+#     with "Key \"description\" not found"); it is generated here.
+#   * RCON default is the tools/rcon default (port 27015, password 12345), so
+#     `tools/rcon "..."` works with no env.
+#
+# Usage:
+#   tools/run-server --scenario <name-or-path> [--map-gen-settings FILE]
+#   tools/run-server --save <name-or-path> [--] [extra factorio args...]
+#
+#   --scenario NAME|PATH   run --start-server-load-scenario (fresh world);
+#                          NAME resolves under $FACTORIO_DIR/scenarios, a PATH
+#                          is used verbatim.
+#   --save NAME|PATH       run --start-server over a save (NAME resolves under
+#                          $FACTORIO_DIR/saves); defaults to the newest save.
+#   --map-gen-settings F   pass --map-gen-settings F (world-creation flags).
+#   --rcon-port N          default 27015 (matches tools/rcon).
+#   --rcon-password P      default 12345  (matches tools/rcon).
+#   --port N               game network port (default 34197). When either is
+#                          unset and the default is taken (e.g. the live
+#                          server runs on this box) the runner picks a free
+#                          one and prints it -- point tools/rcon at it.
+#   --working-dir DIR      keep the staged write-data (mods, settings, logs)
+#                          here instead of a temp dir; prints its path either
+#                          way. The server log output goes to $DIR/factorio-current.log.
+#   --force                boot even if another factorio is running.
+#   --                     remaining args are passed to the binary unchanged.
+#
+# Requires: bash, jq.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+FACTORIO_DIR="${FACTORIO_DIR:-$HOME/factorio}"
+[[ -d "$FACTORIO_DIR" ]] || FACTORIO_DIR="${FACTORIO_DIR:-/factorio}"
+BIN="$FACTORIO_DIR/bin/x64/factorio"
+MODS_SRC="$FACTORIO_DIR/mods"
+
+RCON_PORT=27015
+RCON_PASSWORD=12345
+EXTRA_ARGS=()
+load_mode=""
+
+# Pick the first free port starting at $1 (tcp|udp, $2 = candidate); empty if none.
+free_port() {
+    python3 - "$1" "$2" <<'EOF'
+import socket, sys
+kind, start = sys.argv[1], int(sys.argv[2])
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM if kind == "udp" else socket.SOCK_STREAM)
+for port in range(start, start + 200):
+    try:
+        sock.bind(("0.0.0.0", port))
+        sock.close()
+        sys.stdout.write(str(port))
+        break
+    except OSError:
+        continue
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --scenario) load_mode="scenario"; VALUE="$2"; shift 2 ;;
+        --save) load_mode="save"; VALUE="$2"; shift 2 ;;
+        --map-gen-settings) MAP_GEN_SETTINGS="$2"; shift 2 ;;
+        --rcon-port) RCON_PORT="$2"; RCON_PINNED=1; shift 2 ;;
+        --rcon-password) RCON_PASSWORD="$2"; shift 2 ;;
+        --port) GAME_PORT="$2"; GAME_PINNED=1; shift 2 ;;
+        --working-dir) WORK_DIR="$2"; shift 2 ;;
+        --force) FORCE=1; shift ;;
+        --) shift; EXTRA_ARGS+=("$@"); break ;;
+        -h|--help) sed -n '2,40p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "error: unknown option: $1 (try --help)" >&2; exit 2 ;;
+    esac
+done
+
+[[ -x "$BIN" ]] || { echo "error: no executable at $BIN (set FACTORIO_DIR)" >&2; exit 2; }
+[[ -d "$MODS_SRC" ]] || { echo "error: no mods dir at $MODS_SRC" >&2; exit 2; }
+[[ -n "$load_mode" ]] || { echo "error: need --scenario or --save (no argument defaults to newest save)" >&2; exit 2; }
+
+# Auto-free ports when the defaults are taken (the live server may own them)
+# and the user did not pin them.
+if [[ -z "${GAME_PINNED:-}" ]]; then
+    GAME_PORT="$(free_port udp 34197)"
+    [[ -n "$GAME_PORT" ]] || { echo "error: no free game port found" >&2; exit 2; }
+fi
+if [[ -z "${RCON_PINNED:-}" ]]; then
+    RCON_PORT="$(free_port tcp 27015)"
+    [[ -n "$RCON_PORT" ]] || { echo "error: no free rcon port found" >&2; exit 2; }
+fi
+
+# Refuse to double-boot (unless forced): second instance = write-dir/port chaos.
+if ! (( ${FORCE:-0} )); then
+    if pgrep -f "$BIN" >/dev/null 2>&1; then
+        echo "error: a factorio instance ($BIN) is already running; stop it or pass --force" >&2
+        exit 2
+    fi
+fi
+
+# --- working dir: stage write-data (mods copy, settings, scenario, logs) ---
+if [[ -n "${WORK_DIR:-}" ]]; then
+    RUN_DIR="$WORK_DIR"
+    mkdir -p "$RUN_DIR/scenarios" "$RUN_DIR/mods"
+else
+    RUN_DIR="$(mktemp -d /tmp/factorio-run.XXXXXX)"
+    mkdir -p "$RUN_DIR/scenarios" "$RUN_DIR/mods"
+    trap 'rm -rf "$RUN_DIR"' EXIT
+fi
+
+# --- writable copy of the ENABLED mods (the read-only source dir wedges the
+#     game's write-back of mod-list/mod-settings; only enabled mods + the
+#     .dat are needed, so the copy is small) ---
+python3 - "$MODS_SRC" "$RUN_DIR/mods" "$MODS_SRC/mod-list.json" <<'EOF'
+import json, os, re, shutil, sys
+src, dst, modlist = sys.argv[1], sys.argv[2], sys.argv[3]
+# Built-ins live in read-data, not the mods dir -- not a warning.
+builtin = {"base", "elevated-rails", "quality", "space-age"}
+version = lambda n: tuple((int(x) if x.isdigit() else 0) for x in re.findall(r"\d+", n.split("_", 1)[1] or "0.0.0"))
+for m in json.load(open(modlist))["mods"]:
+    if not m.get("enabled", True) or m["name"] in builtin:
+        continue
+    candidates = sorted(os.listdir(src))
+    pick = next((c for c in candidates if c == m["name"] and os.path.isdir(os.path.join(src, c))), None)
+    if pick is None:
+        zips = [c for c in candidates if c.startswith(m["name"] + "_") and c.endswith(".zip")]
+        if zips:
+            pick = max(zips, key=version)
+    if pick is None:
+        print(f"warning: enabled mod {m['name']} not found in mods dir", file=sys.stderr)
+        continue
+    p = os.path.join(src, pick)
+    (shutil.copytree(p, os.path.join(dst, m["name"]))
+     if os.path.isdir(p) else shutil.copy2(p, os.path.join(dst, pick)))
+EOF
+cp "$MODS_SRC/mod-list.json" "$RUN_DIR/mods/mod-list.json"
+[[ -f "$MODS_SRC/mod-settings.dat" ]] && cp "$MODS_SRC/mod-settings.dat" "$RUN_DIR/mods/"
+
+cat > "$RUN_DIR/config.ini" <<EOF
+[path]
+write-data=$RUN_DIR
+read-data=$FACTORIO_DIR/data
+EOF
+
+cat > "$RUN_DIR/server-settings.json" <<EOF
+{"name":"Legendary Deathworld","description":"tool run-server","tags":[],"visibility":{"public":false,"lan":false},"username":"","password":"","token":"","game_password":"","require_user_verification":true,"max_players":1,"max_upload_in_kilobytes_per_second":0,"minimum_latency_in_ticks":0,"max_heartbeats_per_second":60,"ignore_player_limit_for_returning_players":false,"allow_commands":"admins-only","autosave_interval":0,"autosave_slots":0,"afk_autokick_interval":0,"auto_pause":false,"only_admins_can_pause":false,"autosave_only_on_server":false,"non_blocking_saving":true,"segmented_secondary_saves":true,"save_interval":1,"rcon":{"enabled":true,"port":$RCON_PORT,"password":"$RCON_PASSWORD"}}
+EOF
+
+# --- resolve the thing to run; stage scenarios under the write-data path ---
+case "$load_mode" in
+    scenario)
+        if [[ "$VALUE" == */* ]]; then
+            SCEN="$VALUE"
+        else
+            SCEN="$FACTORIO_DIR/scenarios/$VALUE"
+        fi
+        [[ -d "$SCEN" ]] || { echo "error: scenario dir not found: $SCEN" >&2; exit 2; }
+        rm -rf "$RUN_DIR/scenarios/$(basename "$SCEN")"
+        cp -r "$SCEN" "$RUN_DIR/scenarios/"
+        BOOT_ARGS=(--start-server-load-scenario "$(basename "$SCEN")")
+        ;;
+    save)
+        if [[ "$VALUE" == */* ]]; then
+            SAVE_PATH="$VALUE"
+        elif [[ -n "${VALUE:-}" ]]; then
+            SAVE_PATH="${VALUE%.zip}.zip"
+            [[ "$SAVE_PATH" == /* ]] || SAVE_PATH="$FACTORIO_DIR/saves/$SAVE_PATH"
+        else
+            SAVE_PATH="$(find "$FACTORIO_DIR/saves" -maxdepth 1 -name '*.zip' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2-)"
+        fi
+        [[ -n "$SAVE_PATH" && -f "$SAVE_PATH" ]] || { echo "error: save not found (looking for $SAVE_PATH)" >&2; exit 2; }
+        BOOT_ARGS=(--start-server "$SAVE_PATH")
+        ;;
+esac
+
+[[ -z "${MAP_GEN_SETTINGS:-}" ]] || BOOT_ARGS+=(--map-gen-settings "$MAP_GEN_SETTINGS")
+[[ -z "${GAME_PORT:-}" ]] || BOOT_ARGS+=(--port "$GAME_PORT")
+
+echo "FACTORIO_DIR=$FACTORIO_DIR"
+echo "BOOT=${BOOT_ARGS[*]}"
+echo "WORKING-DIR=$RUN_DIR   (log: $RUN_DIR/factorio-current.log)"
+echo "RCON=port $RCON_PORT, password $RCON_PASSWORD -> tools/rcon \"...\""
+echo "---"
+
+exec "$BIN" --no-log-rotation "${BOOT_ARGS[@]}" \
+    --mod-directory "$RUN_DIR/mods" \
+    --config "$RUN_DIR/config.ini" \
+    --server-settings "$RUN_DIR/server-settings.json" \
+    --rcon-port "$RCON_PORT" --rcon-password "$RCON_PASSWORD" \
+    "${EXTRA_ARGS[@]}"
