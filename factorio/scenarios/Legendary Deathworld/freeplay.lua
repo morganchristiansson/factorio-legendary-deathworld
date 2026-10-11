@@ -129,7 +129,11 @@ storage.nested_recently = false
 storage.nesting_spot = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0}}
 -----------------------------------------------------------------------
 local on_chunk_generated = function(event)
-	if reset.is_round_surface(event.surface) then
+	-- Legendary-spawner upgrade applies to swap-pair surfaces only; the
+	-- whitelist excludes the dummy primary, the gulag and any other ground
+	-- surface, so reachable planets with spawners (gleba, etc.) are never
+	-- upgraded here.
+	if reset.is_swap_surface(event.surface) then
 		for k, entity in pairs (event.surface.find_entities_filtered{area = event.area, type = {"unit-spawner", "turret"}}) do
 			event.surface.create_entity{name = entity.name, position = entity.position, quality = "legendary"}
 			entity.destroy()
@@ -196,7 +200,7 @@ local on_research_finished = function(event)
 	end
     local player_count = #game.connected_players
     local research = event.research.name
-    local evo = game.forces["enemy"].get_evolution_factor(reset.active_surface())
+    local evo = game.forces["enemy"].get_evolution_factor(reset.current_surface())
     log(string.format("event=research-finished, research=%s, evolution=%.4f, players=%d", research, evo, player_count))
 end
 -----------------------------------------------------------------------
@@ -486,7 +490,7 @@ script.on_nth_tick(3600, function()
 	end
 
     -- starting time evo is 0.00004
-    local evo = game.forces["enemy"].get_evolution_factor(reset.active_surface())
+    local evo = game.forces["enemy"].get_evolution_factor(reset.current_surface())
     storage.evo_stage = storage.evo_stage or 0
     for i, stage in ipairs(evo_stages) do
         if evo >= stage[1] and storage.evo_stage < i then
@@ -583,7 +587,7 @@ freeplay.on_configuration_changed = function()
   storage.pings = storage.pings or {}
 
   if not storage.init_ran then
-    -- migrating old saves.
+    -- fresh save setup (init_ran) arms on the first player.
     storage.init_ran = #game.players > 0
   end
   init_ending_info()

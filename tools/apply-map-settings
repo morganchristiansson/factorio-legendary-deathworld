@@ -11,9 +11,9 @@
 # Notes:
 # * Map/difficulty settings persist inside the save once applied.
 # * Map GEN settings only affect chunks generated afterwards -- existing terrain is unchanged.
-# * Gen settings also land in the scenario's storage.current_map_gen_settings (the
-#   template every /reset round surface is created from), so live adjustments
-#   carry into future rounds, not just the current surface.
+# * Gen settings also land in the scenario's storage.map_gen_settings (the
+#   shared worldgen template every swap surface is created from), so live
+#   adjustments carry into future rounds, not just the active surface.
 # * territory_settings (planet/territory block) are applied to the active
 #   round surface (the one on the host planet nauvis2) from
 #   map-gen-settings.json like the other gen settings.
@@ -106,7 +106,7 @@ DESIRED_GEN=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_
   ($m[0].autoplace_controls | to_lua) as $ctrl
   | (($m[0].property_expression_names // {}) | to_lua) as $props
   | ($m[0].default_enable_all_autoplace_controls | to_lua) as $dall
-  | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local desired_enable_all=" + $dall + "; local s=(game.planets[\"nauvis2\"] or {}).surface or game.surfaces[\"nauvis1\"] or game.surfaces[\"nauvis2\"] or game.surfaces[\"nauvis\"]; local m=s.map_gen_settings; for ctrl, vals in pairs(desired_ctrl) do m.autoplace_controls[ctrl]=m.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do m.autoplace_controls[ctrl][k]=v end end; m.property_expression_names=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do m.property_expression_names[pname]=pval end; if desired_enable_all ~= nil then m.default_enable_all_autoplace_controls=desired_enable_all end; s.map_gen_settings=m; if storage.current_map_gen_settings then local t=storage.current_map_gen_settings; t.autoplace_controls=t.autoplace_controls or {}; for ctrl, vals in pairs(desired_ctrl) do t.autoplace_controls[ctrl]=t.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do t.autoplace_controls[ctrl][k]=v end end; t.property_expression_names=t.property_expression_names or {}; for pname,pval in pairs(desired_props) do t.property_expression_names[pname]=pval end; if desired_enable_all ~= nil then t.default_enable_all_autoplace_controls=desired_enable_all end end"
+  | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local desired_enable_all=" + $dall + "; local s=(game.planets[\"nauvis2\"] or {}).surface or game.surfaces[\"nauvis1\"] or game.surfaces[\"nauvis2\"] or game.surfaces[\"nauvis\"]; local m=s.map_gen_settings; for ctrl, vals in pairs(desired_ctrl) do m.autoplace_controls[ctrl]=m.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do m.autoplace_controls[ctrl][k]=v end end; m.property_expression_names=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do m.property_expression_names[pname]=pval end; if desired_enable_all ~= nil then m.default_enable_all_autoplace_controls=desired_enable_all end; s.map_gen_settings=m; if storage.map_gen_settings then local t=storage.map_gen_settings; t.autoplace_controls=t.autoplace_controls or {}; for ctrl, vals in pairs(desired_ctrl) do t.autoplace_controls[ctrl]=t.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do t.autoplace_controls[ctrl][k]=v end end; t.property_expression_names=t.property_expression_names or {}; for pname,pval in pairs(desired_props) do t.property_expression_names[pname]=pval end; if desired_enable_all ~= nil then t.default_enable_all_autoplace_controls=desired_enable_all end end"
 ')
 echo "/silent-command do $DESIRED_GEN end"
 

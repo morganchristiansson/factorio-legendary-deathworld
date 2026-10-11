@@ -140,7 +140,7 @@ commands.add_command("defeat", "Test the loss sequence without waiting for biter
     -- A biter nest is spawners plus worm turrets; any of them inside the
     -- spawn box is a loss. Then hand the spawner to the real trigger, so the
     -- test runs the same path the game does.
-    local surface = reset.active_surface()
+    local surface = reset.current_surface()
     local nest = surface.create_entity{name = "biter-spawner", position = {x = 0, y = 0}, force = "enemy"}
     for _, building in ipairs({{"biter-spawner", -12, 4}, {"biter-spawner", 10, -8}, {"small-worm-turret", -6, -12}}) do
         surface.create_entity{name = building[1], position = {x = building[2], y = building[3]}, force = "enemy"}
@@ -183,7 +183,7 @@ commands.add_command("set-spawn", "Move where players spawn. Usage: /set-spawn [
         reply(command, "Usage: /set-spawn [gps=]<x>,<y>")
         return
     end
-    game.forces["player"].set_spawn_position({x = x, y = y}, reset.active_surface())
+    game.forces["player"].set_spawn_position({x = x, y = y}, reset.current_surface())
     game.print(string.format("Spawn point moved to %.1f,%.1f.", x, y))
     log(string.format("event=spawn-point, actor=%s, position=%.1f,%.1f", actor, x, y))
 end)
@@ -191,7 +191,7 @@ end)
 -- The engine's own /seed prints the seed the save was created with and cannot
 -- be overridden, so the round's real seed gets its own command.
 commands.add_command("map-seed", "Prints the seed of the current map.", function(command)
-    reply(command, "Current map seed: " .. reset.active_surface().map_gen_settings.seed)
+    reply(command, "Current map seed: " .. reset.current_surface().map_gen_settings.seed)
 end)
 
 commands.add_command("reset", "Resets map. Usage: /reset [seed]", function(command)

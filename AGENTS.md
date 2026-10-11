@@ -48,18 +48,21 @@ that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
   vanilla `nauvis` planet and its primary surface are a permanent dummy -- the
   primary cannot be deleted (`delete_surface` queues but never completes), and
   `associate_surface` has no disassociate form, so the primary can never host
-  the swap. A save deployed mid-round on the primary keeps playing there until
-  the first `/reset`, which migrates it (perform_reset's migration branch).
+  the swap. A save deployed mid-round on the primary is unsupported -- start a
+  new game; perform_reset does not guard this (no swap-pair surface makes
+  current_surface() returns nil and the reset errors -- start fresh). The dummy
+  is hidden from the surface list via set_surface_hidden(1, true) -- index 1
+  is the never-deleted primary nauvis.
 - `game.surfaces[1]` means nothing across a swap: indices rebalance when the
   round surface is deleted. Everything round-facing keys off
-  `reset.active_surface()` (the host planet's surface, with name fallbacks
+  `reset.current_surface()` (the host planet's surface, with name fallbacks
   for the two-tick window mid-swap), or `event.surface_index` inside handlers,
   and name-keyed engine calls (`get_evolution_factor`, `chart_all`, pollution
   stats) take that surface object, never `"nauvis"`.
 - **Chunk generation can outlive association.** The dormant surface's chunks
   are pre-generated before it becomes the round surface, so guards like
-  freeplay's legendary-spawner upgrade use `reset.is_round_surface(surface)`
-  (name ∈ {nauvis1, nauvis2, plus the dummy primary}), not `surface.planet`
+  freeplay's legendary-spawner upgrade whitelist `reset.is_swap_surface(surface)`
+  (name ∈ {nauvis1, nauvis2} only), not `surface.planet`
   -- the planet is nil during pre-generation.
 - **Permission writes from a player's command are refused**, whatever the admin
   flag says: `edit_permission_group` for moving a player, `add_permission_group`
