@@ -941,8 +941,11 @@ local on_player_joined = function(event)
         if character and character.valid then
             player.character.destroy()
         end
-        player.teleport({0, 0}, target)
-        local spawn = target.find_non_colliding_position("character", {0, 0}, 4, 0.5) or {0, 0}
+        -- /set-spawn moves the force spawn point; new joiners land there
+        -- (same as death respawns), not hardcoded at the origin.
+        local spawn_pos = game.forces["player"].get_spawn_position(target)
+        player.teleport(spawn_pos, target)
+        local spawn = target.find_non_colliding_position("character", spawn_pos, 4, 0.5) or spawn_pos
         local fresh = target.create_entity{name = "character", position = spawn, force = "player"}
         if fresh then
             player.set_controller{type = defines.controllers.character, character = fresh}

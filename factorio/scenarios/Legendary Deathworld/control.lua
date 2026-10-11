@@ -173,9 +173,11 @@ commands.add_command("set-spawn", "Move where players spawn. Usage: /set-spawn [
     end
     -- Typed bare (34.4,-43.2) or pasted out of a map view (gps=34.4,-43.2,
     -- [gps=...], with a "copied" tag behind it): everything but digits, sign
-    -- and separator is dropped, and what is left has to be exactly one "x,y".
+    -- and separator is dropped, leaving "x,y" plus any surface-name digit
+    -- (nauvis1 -> 1). The first two numbers are taken; the rest (a GPS tag's
+    -- surface name) is ignored, so dropping the $ anchor is what makes tags work.
     local cleaned = parameter:gsub("[^-%d%.%,]", " ")
-    local x, y = cleaned:match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)%s*$")
+    local x, y = cleaned:match("^%s*(-?[%d%.]+)%s*,%s*(-?[%d%.]+)")
     x, y = tonumber(x), tonumber(y)
     if not x or not y then
         reply(command, "Usage: /set-spawn [gps=]<x>,<y>")
