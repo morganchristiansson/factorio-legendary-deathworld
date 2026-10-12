@@ -1,5 +1,5 @@
 {
-  "_comment": "Whitelist of mods for Legendary Deathworld, same shape as Factorio's mod-list.json (minus versions). A mod listed with enabled=true is enabled; anything listed false -- or absent entirely -- is written to mod-list.json with enabled=false (default-deny: Factorio would otherwise auto-enable unknown mods on startup). The generated mod-list.json itself is never committed -- regenerate it with tools/sync-mod-list.",
+  "_comment": "Whitelist of mods for Legendary Deathworld: the committed desired-state config (factorio/data/mod-list.json). Same shape as Factorio's mod-list.json (minus versions). A mod listed with enabled=true is enabled; anything listed false -- or absent entirely -- is written to the live mod-list.json (factorio/mods/mod-list.json) with enabled=false (default-deny: Factorio would otherwise auto-enable unknown mods on startup). The live mod-list.json is never committed -- regenerate it with tools/sync-mod-list.",
   "mods": [
     {
       "name": "AutoDeconstruct",

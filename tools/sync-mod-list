@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 #
-# Generate a default-deny mod-list.json from the committed whitelist.
+# Generate a default-deny live mod-list.json from the committed whitelist
+# (factorio/data/mod-list.json).
 #
 # Factorio auto-enables any mod found in the mods directory but missing
-# from mod-list.json (and adds it as enabled on startup), so a
-# hand-maintained mod-list.json silently absorbs mods uploaded for other
-# saves. This script scans the mods directory and writes every discovered
-# mod explicitly: enabled only if listed in factorio/data/mods.json.
+# from the live mod-list.json (and adds it as enabled on startup), so a
+# hand-maintained live mod-list.json silently absorbs mods uploaded for
+# other saves. This script scans the mods directory and writes every
+# discovered mod explicitly: enabled only if listed in the whitelist.
 #
 #   tools/sync-mod-list           write /factorio/mods/mod-list.json (backs up the old one)
 #   tools/sync-mod-list --check   exit 0 if up to date, 1 with a diff otherwise
 #
-# The whitelist (repo-local, committed) and the generated mod-list.json
-# (server-local, never committed) are separate files: to change the mod
-# set, edit factorio/data/mods.json and re-run this script.
+# The whitelist (factorio/data/mod-list.json, committed) and the generated
+# live mod-list.json (factorio/mods/mod-list.json, never committed) are
+# separate: to change the mod set, edit the whitelist and re-run this script.
 #
 # Requires: bash, jq   (see Dockerfile)
 set -euo pipefail
@@ -24,7 +25,7 @@ cd "$(dirname "$0")/.."
 FACTDIR="${FACTORIO_DIR:-$HOME/factorio}"
 
 MODSDIR="$FACTDIR/mods"
-WHITELIST="factorio/data/mods.json"
+WHITELIST="factorio/data/mod-list.json"
 OUT="$MODSDIR/mod-list.json"
 
 usage() {
