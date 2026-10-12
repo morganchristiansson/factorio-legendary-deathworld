@@ -466,9 +466,18 @@ local evo_stages = {
         game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.125
         game.map_settings.enemy_evolution.time_factor = 0.0004
     end},
-    {0.90, "ld-evo-milestone-90"},
+    {0.90, "ld-evo-milestone-90", function()
+        if script.active_mods["colossal-enemies"] then
+            storage.strafer = "colossal-strafer-pentapod"
+            storage.stomper = "colossal-stomper-pentapod"
+        end
+    end},
     {0.95, "ld-evo-milestone-95", function()
         game.map_settings.enemy_evolution.time_factor = 0.0008
+        if script.active_mods["colossal-enemies"] then
+            storage.strafer = "gargantuan-strafer-pentapod"
+            storage.stomper = "gargantuan-stomper-pentapod"
+        end
     end},
 }
 -----------------------------------------------------------------------

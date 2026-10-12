@@ -26,6 +26,10 @@
       "enabled": true
     },
     {
+      "name": "colossal-enemies",
+      "enabled": true
+    },
+    {
       "name": "custom-spawn-rates",
       "enabled": true
     },
