@@ -125,7 +125,6 @@ storage.quality = "legendary"
 storage.strafer = "behemoth-spitter"
 storage.stomper = "behemoth-spitter"
 storage.victory = false
-storage.nested_recently = false
 storage.nesting_spot = {{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0},{0,0,0}}
 -----------------------------------------------------------------------
 local on_chunk_generated = function(event)
@@ -358,13 +357,16 @@ end
 script.set_event_filter(defines.events.on_post_entity_died, {{filter = "type", type = "unit-spawner"}, {filter = "type", type = "land-mine"}})
 -----------------------------------------------------------------------
 local on_unit_group_finished_gathering = function(event)
-	if storage.nested_recently == true then
+	local cmd = event.group.command
+	if cmd and cmd.type ~= defines.command.build_base then
 		local command = {
 		type = defines.command.compound,structure_type = defines.compound_command.return_last,commands ={
+		cmd,
 		{type = defines.command.go_to_location,destination = {0, 0}},
 		{type = defines.command.attack_area,destination = {0, 0},radius = 16,distraction = defines.distraction.by_anything},
 		{type = defines.command.build_base,destination = {0, 0},distraction = defines.distraction.none,ignore_planner = true}}}
 		event.group.set_command(command)
+		log(string.format("event=group-gathered, kind=attack, destination=0.0,0.0"))
 	else
 		local x = event.group.position.x
 		local y = event.group.position.y
@@ -434,7 +436,8 @@ local on_unit_group_finished_gathering = function(event)
 		{type = defines.command.go_to_location,destination = {storage.nesting_spot[1][1], storage.nesting_spot[1][2]},distraction = defines.distraction.none},
 		{type = defines.command.build_base,destination = {storage.nesting_spot[1][1], storage.nesting_spot[1][2]},distraction = defines.distraction.none,ignore_planner = true}}}
 		event.group.set_command(command)
-		storage.nested_recently = true
+		log(string.format("event=group-gathered, kind=nesting, destination=%.1f,%.1f",
+			storage.nesting_spot[1][1], storage.nesting_spot[1][2]))
 	end
 end
 -----------------------------------------------------------------------
@@ -482,8 +485,6 @@ local evo_stages = {
 }
 -----------------------------------------------------------------------
 script.on_nth_tick(3600, function()
-    storage.nested_recently = false
-
     if math.random(1, 5) == 1 then
 	game.map_settings.asteroids.spawning_rate = 10
     else
