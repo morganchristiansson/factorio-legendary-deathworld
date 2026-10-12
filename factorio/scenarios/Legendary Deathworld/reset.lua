@@ -21,7 +21,7 @@
 --   Public.setup_starting_area(surf) - reveal + crash site + spawn defences
 --   Public.current_surface()          - the host planet's current surface
 --   Public.is_swap_surface(surf)     - swap-pair surface (active or dormant;
---   (the dummy primary is never the round surface on a fresh save)
+--   (the dummy primary is never the current surface on a fresh save)
 -- Reroll vote opens automatically at the end of a swap (on_surface_deleted).
 
 local util = require("util")
@@ -38,12 +38,12 @@ local Public = {}
 -- fork provides (a hidden-free copy of the nauvis planet prototype). The
 -- vanilla "nauvis" planet and its primary surface are a permanent dummy: the
 -- primary cannot be deleted, so it can never be disassociated -- only
--- surfaces on planet nauvis2 ever become the active round surface. The swap
--- deletes the old round surface (which disassociates it from the planet --
+-- surfaces on planet nauvis2 ever become the current surface. The swap
+-- deletes the old current surface (which disassociates it from the planet --
 -- the only way) and the fresh one is associated in the swap's second half.
 -- The round planet is unlocked for the player force so it appears in the
 -- surfaces list as a planet (undiscovered planets bucket their surfaces
--- under "Other"), and travel to it lands on the round surface itself.
+-- under "Other"), and travel to it lands on the current surface itself.
 local PLANET = "nauvis2"
 local SURFACES = {"nauvis1", "nauvis2"}
 
@@ -83,16 +83,16 @@ end
 -- The worldgen template lives in storage so it can be adjusted and
 -- future rounds inherit the adjustment: a runtime create_surface inherits
 -- nothing on its own -- the planet prototype is read-only at runtime
--- (probe: "No modifications of LuaSpaceLocationPrototype"), planet
--- create_surface uses the same proto, and the launch JSON's
--- property_expression_names are not retained anywhere reachable (probe:
--- game.default_map_gen_settings keeps only autoplace_controls plus a few
--- top-level fields; its property_expression_names is empty). So the template
--- is deep-copied from the flag's survivor table, the clone proto supplies
--- what the flag reader dropped (property binds, entity settings that must be
--- baked at surface creation, territory, and proto-only controls like
--- ammonia_ocean), and the scenario's own property overrides mirroring
--- factorio/data/map-gen-settings.json top it off.
+-- (probe: "No modifications of LuaSpaceLocationPrototype"), so the template
+-- is deep-copied from the clone proto, which already carries the launch
+-- flag's merged worldgen -- terrain binds, entity settings, territory,
+-- climate controls, every autoplace control including proto-only ones like
+-- ammonia_ocean, and all property_expression_names (probe 2.0.77, live boot
+-- path: game.default_map_gen_settings and the planet prototype carry the
+-- same 10 property binds with the flag's values). Map tuning lives in
+-- factorio/data/map-gen-settings.json, the canonical source: the flag
+-- merges it into the proto, and the overlay below keeps the flag's
+-- autoplace_controls, enable-all and starting area winning on overlap.
 -- tools/apply-map-settings patches the same storage table, so live
 -- adjustments carry into the next round.
 local init_map_gen_settings = function(surface)
@@ -108,7 +108,11 @@ local init_map_gen_settings = function(surface)
     -- Overlay the launch config's retained fields: its autoplace_controls
     -- (frequencies, gleba_enemy_base, scrap, water), enable-all and the
     -- starting area. Flag values win on overlap; controls only the proto
-    -- carries keep the proto's values.
+    -- carries keep the proto's values. The merge runs both ways by design
+    -- (probe 2.0.77): the flag supplies gleba_enemy_base, which the proto
+    -- lacks, while the proto keeps its mod-merged specifics the flag never
+    -- lists -- ammonia_ocean, the 7-unit demolisher territory, nauvis_cliff
+    -- and smoothing 0 -- so neither source alone is complete.
     local preset = game.default_map_gen_settings
     if preset then
         -- Add-or-merge into mgs's own (plain) tables: flag values win on
@@ -131,12 +135,9 @@ local init_map_gen_settings = function(surface)
             mgs.starting_area = preset.starting_area
         end
     end
-    -- Property overrides the flag reader drops (probed): the scenario's map
-    -- tuning from map-gen-settings.json.
-    mgs.property_expression_names = mgs.property_expression_names or {}
-    mgs.property_expression_names["entity:gleba-spawner:probability"] = 0
-    mgs.property_expression_names["eon_gleba_south_offset"] = 500
-    mgs.property_expression_names["control:moisture:bias"] = 2
+    -- Property binds need no Lua overrides: the proto copy above already
+    -- holds the flag's property_expression_names, so the JSON file stays
+    -- the single source of map tuning.
     storage.map_gen_settings = mgs
     return mgs
 end
@@ -778,7 +779,7 @@ local finish_surface_swap = function(surface)
     if planet and not planet.surface then
         planet.associate_surface(surface)
     end
-    -- The round surface belongs on the surfaces list; a dormant surface
+    -- The current surface belongs on the surfaces list; a dormant surface
     -- hidden during pre-generation is revealed here.
     game.forces["player"].set_surface_hidden(surface.name, false)
     storage.current_surface = surface.name
@@ -826,7 +827,7 @@ end
 -- The swap's second half, entry point: the old surface is gone and the planet
 -- is free again, so the freshly built surface is adopted and the round stood
 -- up on it. Any surface deletion reaches this handler, but only the swap's
--- prev-delete leaves the host planet's round surface unadopted, so guard on
+-- prev-delete leaves the host planet's current surface unadopted, so guard on
 -- that rather than on a recorded index.
 local on_surface_deleted = function(event)
     local surface = game.surfaces[storage.current_surface]
@@ -904,7 +905,7 @@ local on_player_joined = function(event)
     local misplaced = (not character or not character.valid) or player.surface.name ~= target.name
     -- A fresh joiner gets placed unconditionally (bb does the same): at
     -- on_player_joined the engine has not finished deciding the character's
-    -- placement, and player.surface can already match the round surface
+    -- placement, and player.surface can already match the current surface
     -- while the pending spawn still lands on the home planet's dummy surface.
     local fresh = player.online_time == 0
     if fresh or misplaced then
@@ -1030,7 +1031,7 @@ Public.perform_reset = function(actor, seed)
         science,
         minutes))
     -- Space platforms are deleted; they are surfaces too, so the swap's
-    -- deletion tracking picks the round surface out of the pile by index.
+    -- deletion tracking picks the current surface out of the pile by index.
     for _, surface in pairs(game.surfaces) do
         if surface.platform then
             game.delete_surface(surface)
@@ -1069,7 +1070,7 @@ Public.events =
   [defines.events.on_player_joined_game] = on_player_joined,
 }
 Public.on_init = function()
-    -- A fresh game: the round surface is created from the host planet's
+    -- A fresh game: the current surface is created from the host planet's
     -- worldgen template and associated with the host planet;
     -- setup_first_round builds the starting area and walks the first player
     -- over. Legacy pre-swap saves are unsupported -- start a new game.

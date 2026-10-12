@@ -15,7 +15,7 @@
 #   shared worldgen template every swap surface is created from), so live
 #   adjustments carry into future rounds, not just the active surface.
 # * territory_settings (planet/territory block) are applied to the active
-#   round surface (the one on the host planet nauvis2) from
+#   current surface (the one on the host planet nauvis2) from
 #   map-gen-settings.json like the other gen settings.
 # * Both modes output ONLY Factorio Lua/commands to stdout (safe to pipe to RCON).
 set -euo pipefail

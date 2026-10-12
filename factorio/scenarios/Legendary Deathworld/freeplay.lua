@@ -313,7 +313,7 @@ function(event)
         -- Coordinates arrive as one prebuilt tag parameter so translators can
         -- place it anywhere in the sentence (or drop it) without touching
         -- the two coordinates separately. The surface rides in the tag so a
-        -- map-jump lands on the round surface, not the dummy primary.
+        -- map-jump lands on the current surface, not the dummy primary.
         local tag = string.format("[gps=%.1f,%.1f,%s]",
             event.position.x, event.position.y, game.surfaces[event.surface_index].name)
         local nest = event.prototype.localised_name

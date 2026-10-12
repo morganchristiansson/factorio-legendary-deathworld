@@ -171,7 +171,7 @@ end
 
 -- Out of the pit, back to where they were taken from.
 local teleport_from_gulag = function(player, data)
-    -- The round surface is deleted and recreated by every reset, so the
+    -- The current surface is deleted and recreated by every reset, so the
     -- recorded name can be gone; fall back to the planet's current surface.
     local surface = data.surface_name and game.surfaces[data.surface_name]
         or game.surfaces[data.surface_index] -- pre-swap records kept the index
