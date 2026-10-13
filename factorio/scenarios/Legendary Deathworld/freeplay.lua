@@ -441,6 +441,64 @@ local on_unit_group_finished_gathering = function(event)
 	end
 end
 -----------------------------------------------------------------------
+-- Demolisher attacks: one per evolution milestone, fired from the stage
+-- callbacks below. The milestone tier spawns on the nearest territory that
+-- still has a live demolisher -- cleared ground stays cleared -- but it
+-- guards a territory cut around spawn, the old spawn-territory trick, so it
+-- marches home onto the base under its own patrol AI and works itself into
+-- a rage there. Every territory cleared means re-infesting the furthest
+-- wilderness, never a worm scripted in beside the base.
+local demolisher_attack = function(name)
+    if prototypes.entity[name] == nil then
+        -- behemoth-demolisher without its mod: the milestone still lands.
+        log(string.format("event=demo-attack, unit=%s, result=no-prototype", name))
+        return
+    end
+    local surface = reset.current_surface()
+    -- Source ground: the nearest live-guarded chunk wins; when everything is
+    -- cleared, the furthest chunk instead, re-infested from afar and never
+    -- scripted in beside the base. One slot holds it: any live chunk beats a
+    -- cleared one, live chunks compete by minimum distance, cleared ones by
+    -- maximum until the first live lands.
+    local source_pos, source_d, source_live = nil, nil, false
+    for _, territory in pairs(surface.get_territories()) do
+        local guarded = #territory.get_segmented_units() > 0
+        for _, chunk in pairs(territory.get_chunks()) do
+            if surface.is_chunk_generated({chunk.x, chunk.y}) then
+                local px, py = chunk.x * 32 + 16, chunk.y * 32 + 16
+                local d = px * px + py * py
+                if guarded then
+                    if not source_live or d < source_d then
+                        source_pos, source_d, source_live = {x = px, y = py}, d, true
+                    end
+                elseif not source_live and (source_d == nil or d > source_d) then
+                    source_pos, source_d = {x = px, y = py}, d
+                end
+            end
+        end
+    end
+    if source_pos == nil then
+        log(string.format("event=demo-attack, unit=%s, result=no-source", name))
+        return
+    end
+    -- The attack's home: a territory around spawn, reused across milestones.
+    local home = surface.get_territory_for_chunk({0, 0})
+    if not (home and home.valid) then
+        home = surface.create_territory{chunks = {{-2,-2},{-1,-2},{0,-2},{1,-2},{-2,-1},{-1,-1},{0,-1},{1,-1},{-2,0},{-1,0},{0,0},{1,0},{-2,1},{-1,1},{0,1},{1,1}}}
+    end
+    if home == nil then
+        log(string.format("event=demo-attack, unit=%s, result=no-territory", name))
+        return
+    end
+    local demo = surface.create_segmented_unit{name = name, position = source_pos, quality = "legendary", territory = home}
+    if demo == nil then
+        log(string.format("event=demo-attack, unit=%s, result=spawn-failed", name))
+        return
+    end
+    game.print({"ld-announcement", {"ld-demo-attack", prototypes.entity[name].localised_name}})
+    log(string.format("event=demo-attack, unit=%s", name))
+end
+-----------------------------------------------------------------------
 -- Evolution stages: applied and announced once, when the threshold is first
 -- crossed; texts come from locale/en/freeplay.cfg (ld-evo-milestone-*)
 local evo_stages = {
@@ -460,11 +518,11 @@ local evo_stages = {
         game.map_settings.enemy_evolution.time_factor = 0.0002
         storage.strafer = "big-strafer-pentapod"
         storage.stomper = "big-stomper-pentapod"
-    end},
+    end, "small-demolisher"},
     {0.80, "ld-evo-milestone-80", function()
         storage.strafer = "behemoth-strafer-pentapod"
         storage.stomper = "behemoth-stomper-pentapod"
-    end},
+    end, "medium-demolisher"},
     {0.85, "ld-evo-milestone-85", function()
         game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 0.125
         game.map_settings.enemy_evolution.time_factor = 0.0004
@@ -474,14 +532,14 @@ local evo_stages = {
             storage.strafer = "colossal-strafer-pentapod"
             storage.stomper = "colossal-stomper-pentapod"
         end
-    end},
+    end, "big-demolisher"},
     {0.95, "ld-evo-milestone-95", function()
         game.map_settings.enemy_evolution.time_factor = 0.0008
         if script.active_mods["colossal-enemies"] then
             storage.strafer = "gargantuan-strafer-pentapod"
             storage.stomper = "gargantuan-stomper-pentapod"
         end
-    end},
+    end, "behemoth-demolisher"},
 }
 -----------------------------------------------------------------------
 script.on_nth_tick(3600, function()
@@ -508,6 +566,7 @@ script.on_nth_tick(3600, function()
             if stage[3] then stage[3]() end
             game.print({"ld-announcement", {stage[2]}})
             log(string.format("event=evo-stage, evolution=%.2f", stage[1]))
+            if stage[4] then demolisher_attack(stage[4]) end
         end
     end
     update_apex_spitter()
