@@ -14,9 +14,9 @@
 # * Gen settings also land in the scenario's storage.map_gen_settings (the
 #   shared worldgen template every swap surface is created from), so live
 #   adjustments carry into future rounds, not just the active surface.
-# * territory_settings (planet/territory block) are applied to the active
-#   current surface (the one on the host planet nauvis2) from
-#   map-gen-settings.json like the other gen settings.
+# * territory_settings ride in the map-gen command, applied to the active
+#   current surface (the one on the host planet nauvis2) like the other gen
+#   settings -- surface only, never the stored template.
 # * Both modes output ONLY Factorio Lua/commands to stdout (safe to pipe to RCON).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -73,21 +73,16 @@ if (( DIFF )); then
     ')
     echo "/silent-command do $DESIRED_MAP end"
 
-    # ── map-gen diff (consistent [] notation, per-field) ──────────────────
+    # ── map-gen diff (consistent [] notation, per-field; territory rides
+    # along in the same command) ──────────────────────────────────────────
     DESIRED_GEN=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_jq"'
       ($m[0].autoplace_controls | to_lua) as $ctrl
       | (($m[0].property_expression_names // {}) | to_lua) as $props
       | ($m[0].default_enable_all_autoplace_controls | to_lua) as $dall
-      | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local desired_enable_all=" + $dall + "; local s=(game.planets[\"nauvis2\"] or {}).surface or game.surfaces[\"nauvis1\"] or game.surfaces[\"nauvis2\"] or game.surfaces[\"nauvis\"]; local m=s.map_gen_settings; '"$PRINT_INIT"'; if desired_enable_all ~= nil and m.default_enable_all_autoplace_controls ~= desired_enable_all then _print(\"map_gen_settings.default_enable_all_autoplace_controls: \"..tostring(m.default_enable_all_autoplace_controls)..\" -> \"..tostring(desired_enable_all)) end; for ctrl, vals in pairs(desired_ctrl) do local cur=m.autoplace_controls[ctrl]; if not cur then for k,v in pairs(vals) do _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) end else for k,v in pairs(vals) do if cur[k]~=v then _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: \"..tostring(cur[k])..\" -> \"..tostring(v)) end end end end; local live_props=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do if live_props[pname]~=pval then _print(\"map_gen_settings.property_expression_names[\\\"\"..pname..\"\\\"]: \"..tostring(live_props[pname])..\" -> \"..tostring(pval)) end end"
+      | (($m[0].territory_settings // {}) | clean | to_lua) as $terr
+      | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local desired_enable_all=" + $dall + "; local s=(game.planets[\"nauvis2\"] or {}).surface or game.surfaces[\"nauvis1\"] or game.surfaces[\"nauvis2\"] or game.surfaces[\"nauvis\"]; local m=s.map_gen_settings; '"$PRINT_INIT"'; if desired_enable_all ~= nil and m.default_enable_all_autoplace_controls ~= desired_enable_all then _print(\"map_gen_settings.default_enable_all_autoplace_controls: \"..tostring(m.default_enable_all_autoplace_controls)..\" -> \"..tostring(desired_enable_all)) end; for ctrl, vals in pairs(desired_ctrl) do local cur=m.autoplace_controls[ctrl]; if not cur then for k,v in pairs(vals) do _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) end else for k,v in pairs(vals) do if cur[k]~=v then _print(\"map_gen_settings.autoplace_controls[\\\"\"..ctrl..\"\\\"][\\\"\"..k..\"\\\"]: \"..tostring(cur[k])..\" -> \"..tostring(v)) end end end end; local live_props=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do if live_props[pname]~=pval then _print(\"map_gen_settings.property_expression_names[\\\"\"..pname..\"\\\"]: \"..tostring(live_props[pname])..\" -> \"..tostring(pval)) end end" + "; local desired_terr=" + $terr + "; local tm=s.map_gen_settings; local tcur=tm.territory_settings; for k,v in pairs(desired_terr) do local cv=tcur and tcur[k] or nil; if tcur==nil then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) elseif type(v)==\"table\" then if type(cv)==\"table\" then if v[1] and #v ~= #cv then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: len \"..#cv..\" -> \"..#v) end elseif cv==nil then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) end elseif cv~=v then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: \"..tostring(cv)..\" -> \"..tostring(v)) end end"
     ')
     echo "/silent-command do $DESIRED_GEN end"
-
-    # ── territory settings diff (nauvis) ──────────────────────────────────
-    DESIRED_TERR=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_jq"'
-      (($m[0].territory_settings // {}) | clean | to_lua) as $terr
-      | "local desired_terr=" + $terr + "; local s=(game.planets[\"nauvis2\"] or {}).surface or game.surfaces[\"nauvis1\"] or game.surfaces[\"nauvis2\"] or game.surfaces[\"nauvis\"]; local m=s.map_gen_settings; '"$PRINT_INIT"'; local cur=m.territory_settings; for k,v in pairs(desired_terr) do local cv=cur and cur[k] or nil; if cur==nil then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) elseif type(v)==\"table\" then if type(cv)==\"table\" then if v[1] and #v ~= #cv then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: len \"..#cv..\" -> \"..#v) end elseif cv==nil then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: nil -> \"..tostring(v)) end elseif cv~=v then _print(\"map_gen_settings.territory_settings[\\\"\"..k..\"\\\"]: \"..tostring(cv)..\" -> \"..tostring(v)) end end"
-    ')
-    echo "/silent-command do $DESIRED_TERR end"
     exit 0
 fi
 
@@ -106,13 +101,7 @@ DESIRED_GEN=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_
   ($m[0].autoplace_controls | to_lua) as $ctrl
   | (($m[0].property_expression_names // {}) | to_lua) as $props
   | ($m[0].default_enable_all_autoplace_controls | to_lua) as $dall
-  | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local desired_enable_all=" + $dall + "; local s=(game.planets[\"nauvis2\"] or {}).surface or game.surfaces[\"nauvis1\"] or game.surfaces[\"nauvis2\"] or game.surfaces[\"nauvis\"]; local m=s.map_gen_settings; for ctrl, vals in pairs(desired_ctrl) do m.autoplace_controls[ctrl]=m.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do m.autoplace_controls[ctrl][k]=v end end; m.property_expression_names=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do m.property_expression_names[pname]=pval end; if desired_enable_all ~= nil then m.default_enable_all_autoplace_controls=desired_enable_all end; s.map_gen_settings=m; if storage.map_gen_settings then local t=storage.map_gen_settings; t.autoplace_controls=t.autoplace_controls or {}; for ctrl, vals in pairs(desired_ctrl) do t.autoplace_controls[ctrl]=t.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do t.autoplace_controls[ctrl][k]=v end end; t.property_expression_names=t.property_expression_names or {}; for pname,pval in pairs(desired_props) do t.property_expression_names[pname]=pval end; if desired_enable_all ~= nil then t.default_enable_all_autoplace_controls=desired_enable_all end end"
+  | (($m[0].territory_settings // {}) | clean | to_lua) as $terr
+  | "local desired_ctrl=" + $ctrl + "; local desired_props=" + $props + "; local desired_enable_all=" + $dall + "; local s=(game.planets[\"nauvis2\"] or {}).surface or game.surfaces[\"nauvis1\"] or game.surfaces[\"nauvis2\"] or game.surfaces[\"nauvis\"]; local m=s.map_gen_settings; for ctrl, vals in pairs(desired_ctrl) do m.autoplace_controls[ctrl]=m.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do m.autoplace_controls[ctrl][k]=v end end; m.property_expression_names=m.property_expression_names or {}; for pname,pval in pairs(desired_props) do m.property_expression_names[pname]=pval end; if desired_enable_all ~= nil then m.default_enable_all_autoplace_controls=desired_enable_all end; s.map_gen_settings=m; if storage.map_gen_settings then local t=storage.map_gen_settings; t.autoplace_controls=t.autoplace_controls or {}; for ctrl, vals in pairs(desired_ctrl) do t.autoplace_controls[ctrl]=t.autoplace_controls[ctrl] or {}; for k,v in pairs(vals) do t.autoplace_controls[ctrl][k]=v end end; t.property_expression_names=t.property_expression_names or {}; for pname,pval in pairs(desired_props) do t.property_expression_names[pname]=pval end; if desired_enable_all ~= nil then t.default_enable_all_autoplace_controls=desired_enable_all end end" + "; local desired_terr=" + $terr + "; local tm=s.map_gen_settings; local tcur=tm.territory_settings or {}; for k,v in pairs(desired_terr) do tcur[k]=v end; tm.territory_settings=tcur; s.map_gen_settings=tm"
 ')
 echo "/silent-command do $DESIRED_GEN end"
-
-# ── territory settings apply (nauvis) ────────────────────────────────────
-DESIRED_TERR=$(jq -rn --slurpfile m factorio/data/map-gen-settings.json "$to_lua_jq"'
-  (($m[0].territory_settings // {}) | clean | to_lua) as $terr
-  | "local desired_terr=" + $terr + "; local s=(game.planets[\"nauvis2\"] or {}).surface or game.surfaces[\"nauvis1\"] or game.surfaces[\"nauvis2\"] or game.surfaces[\"nauvis\"]; local m=s.map_gen_settings; local cur=m.territory_settings or {}; for k,v in pairs(desired_terr) do cur[k]=v end; m.territory_settings=cur; s.map_gen_settings=m"
-')
-echo "/silent-command do $DESIRED_TERR end"
