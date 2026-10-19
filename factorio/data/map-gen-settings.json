@@ -6,7 +6,7 @@
 "crude-oil":{"frequency":6,"size":1,"richness":1},
 "enemy-base":{"frequency":2,"size":2,"richness":1},
 "fluorine_vent":{"frequency":1,"size":1,"richness":1},
-"gleba_enemy_base":{"frequency":2,"size":2,"richness":1},
+"gleba_enemy_base":{"frequency":4,"size":2,"richness":1},
 "gleba_plants":{"frequency":6,"size":1,"richness":1},
 "gleba_water":{"frequency":1,"size":1,"richness":1},
 "iron-ore":{"frequency":6,"size":1,"richness":1},
@@ -23,7 +23,7 @@
 "vulcanus_volcanism":{"frequency":2,"size":1,"richness":1},
 "water":{"frequency":1,"size":1.33,"richness":1}}, "autoplace_settings":{},
 "property_expression_names": {
-  "eon_gleba_south_offset": 200,
+  "eon_gleba_south_offset": 100,
   "moisture": "eon_moisture_blended",
   "control:moisture:bias": 2,
   "aux": "eon_aux_blended",
