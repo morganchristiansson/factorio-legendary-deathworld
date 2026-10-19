@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     lua5.4 \
     python3 \
+    python3-yaml \
     python3-pip \
     python3-rcon \
     ddgr pandoc \

@@ -5,7 +5,7 @@ tech-tree fields. Blank = untouched; applies at map load.
 
 ## Syntax
 
-Entries are `;`-separated:
+Entries are separated by `;` or a newline:
 
     <path> <value>     set
     +<path> <value>    add/merge

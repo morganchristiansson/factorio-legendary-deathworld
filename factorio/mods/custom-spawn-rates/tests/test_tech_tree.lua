@@ -254,6 +254,13 @@ test("tech comments: '#' ignored, ops still apply", function()
     eq(#LOG_LINES, 1)
 end)
 
+test("tech: newlines separate entries", function()
+    local tech = { unit = { count = 10, time = 5 } }
+    Tech.apply_setting(tech, "t", "# heading\nunit.count 20\nunit.time 6")
+    eq(tech.unit.count, 20)
+    eq(tech.unit.time, 6)
+end)
+
 test("data-final-fixes: tech sections reach matching techs", function()
     local spawners = fresh_world()
     data.raw["unit-spawner"] = spawners

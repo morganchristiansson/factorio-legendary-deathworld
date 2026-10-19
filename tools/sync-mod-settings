@@ -1,146 +1,195 @@
-#!/usr/bin/env bash
-#
-# View and update Factorio startup mod settings without the game UI.
-#
-# The binary mod-settings.dat format cannot be edited by hand (or with
-# jq), so this script fetches a single-file DAT<->JSON codec
-# (whitequark/factorio-data-codec, 0BSD) into an untracked runtime cache
-# and drives it with python3 + jq:
-#
-#   tools/sync-mod-settings view     print the live startup section as JSON
-#   tools/sync-mod-settings diff     show live-vs-tracked startup differences
-#   tools/sync-mod-settings apply    merge tracked settings into mod-settings.dat
-#   tools/sync-mod-settings export   write the live startup section to the tracked file
-#
-# Tracked file: factorio/data/mod-settings.json. Live file:
-# $FACTORIO_DIR/mods/mod-settings.dat (~/factorio by default; backed up
-# before apply, verified after).
-#
-# Only the "startup" section is tracked: runtime-global and
-# runtime-per-user (per-player UI prefs) change during play and are left
-# untouched by apply.
-#
-# The codec is NOT committed to the repo: it is downloaded to
-# .cache/factorio-data-codec/ (see .gitignore) and checksum-pinned below.
-# The URL is pinned to a commit on the active upstream repo, so it
-# cannot drift out from under the checksum; re-pin deliberately to
-# pick up upstream fixes.
-#
-# Requires: bash, curl, jq, python3, sha256sum   (see Dockerfile)
-set -euo pipefail
-cd "$(dirname "$0")/.."
+#!/usr/bin/env python3
+"""View and update Factorio startup mod settings without the game UI.
 
-# Live install root (override for local testing).
-FACTDIR="${FACTORIO_DIR:-$HOME/factorio}"
+The binary mod-settings.dat format cannot be edited by hand, so this script
+uses the pinned whitequark/factorio-data-codec (0BSD) to decode/encode it.
+The tracked file is YAML, so long string-setting values can use block
+scalars.
 
-CODEC_URL="https://codeberg.org/whitequark/factorio-data-codec/raw/commit/8efae46aef48b6b51b12d855af3406b76336f092/factorio_data.py"
-CODEC_SHA256="2ec54ed12d3d769e1cc014caaa05c5332f26f26c80f4b47ab2cbada3e71946c4"
-CACHE_DIR=".cache/factorio-data-codec"
-CODEC_PY="$CACHE_DIR/factorio_data.py"
+    tools/sync-mod-settings view     print the live startup section as JSON
+    tools/sync-mod-settings diff     show live-vs-tracked startup differences
+    tools/sync-mod-settings apply    replace the live startup section with the tracked file
+    tools/sync-mod-settings import   read the live startup section into the tracked file
 
-DAT="$FACTDIR/mods/mod-settings.dat"
-SETTINGS="factorio/data/mod-settings.json"
+Only the "startup" section is tracked: runtime-global and runtime-per-user
+(per-player UI prefs) change during play and are left untouched by apply.
+"""
+import hashlib
+import json
+import os
+import shutil
+import signal
+import sys
+import urllib.request
+from datetime import datetime
+from pathlib import Path
 
-usage() {
-    sed -n '2,27p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
-}
+try:
+    import yaml
+except ImportError:
+    sys.exit("error: PyYAML (python3-yaml) is not installed")
 
-CMD=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        view|diff|apply|export) CMD="$1"; shift ;;
-        -h|--help) usage; exit 0 ;;
-        *) echo "error: unknown argument: $1 (try --help)" >&2; exit 2 ;;
-    esac
-done
-[[ -z "$CMD" ]] && { usage >&2; exit 2; }
+if hasattr(signal, "SIGPIPE"):
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
-command -v curl >/dev/null || { echo "error: 'curl' not installed" >&2; exit 1; }
-command -v jq >/dev/null || { echo "error: 'jq' not installed" >&2; exit 1; }
-command -v python3 >/dev/null || { echo "error: 'python3' not installed" >&2; exit 1; }
-[[ -f "$DAT" ]] || { echo "error: no such file: $DAT" >&2; exit 1; }
+REPO = Path(__file__).resolve().parent.parent
+FACTDIR = Path(os.environ.get("FACTORIO_DIR", "~/factorio")).expanduser()
+DAT = FACTDIR / "mods" / "mod-settings.dat"
+SETTINGS = REPO / "factorio" / "data" / "mod-settings.yaml"
 
-# Fetch the codec into the untracked cache dir unless the pinned copy
-# is already there.
-ensure_codec() {
-    if [[ -f "$CODEC_PY" ]] && echo "$CODEC_SHA256  $CODEC_PY" | sha256sum -c - >/dev/null 2>&1; then
-        return 0
-    fi
-    echo "fetching mod-settings codec..." >&2
-    mkdir -p "$CACHE_DIR"
-    curl -fsSL --retry 3 "$CODEC_URL" -o "$CODEC_PY.tmp"
-    mv "$CODEC_PY.tmp" "$CODEC_PY"
-    echo "$CODEC_SHA256  $CODEC_PY" | sha256sum -c - >/dev/null \
-        || { echo "error: codec checksum mismatch (upstream changed?)" >&2; exit 1; }
-}
+CODEC_URL = ("https://codeberg.org/whitequark/factorio-data-codec/raw/commit/"
+             "8efae46aef48b6b51b12d855af3406b76336f092/factorio_data.py")
+CODEC_SHA256 = "2ec54ed12d3d769e1cc014caaa05c5332f26f26c80f4b47ab2cbada3e71946c4"
+CACHE_DIR = REPO / ".cache" / "factorio-data-codec"
+CODEC_PY = CACHE_DIR / "factorio_data.py"
 
-TMPDIR_WORK="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR_WORK"' EXIT
+HEADER = ("# Factorio startup mod settings (tracked). Apply with "
+          "tools/sync-mod-settings apply.\n"
+          "# Long string settings use block scalars; entries split on ';' "
+          "or a newline.\n\n")
 
-# Decode $DAT to a full-envelope JSON file ($1 = output path).
-decode_full() {
-    python3 "$CODEC_PY" "$DAT" "$1" 2>/dev/null
-}
+MISSING = object()
 
-# Print the live startup overlay: {"setting-name": {"value": ...}, ...}
-live_startup() {
-    decode_full "$TMPDIR_WORK/live.json"
-    jq '.data.startup' "$TMPDIR_WORK/live.json"
-}
 
-case "$CMD" in
-    view)
-        ensure_codec
-        live_startup
-        ;;
-    diff)
-        ensure_codec
-        [[ -f "$SETTINGS" ]] || { echo "error: no such file: $SETTINGS (run export first)" >&2; exit 1; }
-        live_startup > "$TMPDIR_WORK/live-startup.json"
-        jq -rn \
-            --slurpfile live "$TMPDIR_WORK/live-startup.json" \
-            --slurpfile want "$SETTINGS" \
-            '$live[0] as $l | $want[0] as $w
-             | ((($l | keys) + ($w | keys)) | unique)[]
-             | select($l[.] != $w[.])
-             | "\(.): \($l[.] // "(absent)") -> \($w[.] // "(absent)")"'
-        ;;
-    export)
-        ensure_codec
-        mkdir -p "$(dirname "$SETTINGS")"
-        live_startup > "$SETTINGS.tmp"
-        mv "$SETTINGS.tmp" "$SETTINGS"
-        echo "wrote $SETTINGS" >&2
-        ;;
-    apply)
-        ensure_codec
-        [[ -f "$SETTINGS" ]] || { echo "error: no such file: $SETTINGS (run export first)" >&2; exit 1; }
-        jq -e 'type == "object"' "$SETTINGS" >/dev/null \
-            || { echo "error: $SETTINGS is not a JSON object" >&2; exit 1; }
+class Dumper(yaml.SafeDumper):
+    pass
 
-        decode_full "$TMPDIR_WORK/before.json"
 
-        BACKUP="${DAT%.dat}.bak-$(date +%Y%m%d%H%M%S).dat"
-        cp -p "$DAT" "$BACKUP"
-        echo "backup: $BACKUP" >&2
+def represent_str(dumper, value):
+    # Multi-line setting values read best as literal blocks; PyYAML quotes
+    # or plain-styles everything else as needed.
+    style = "|" if "\n" in value else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
 
-        # Merge: tracked startup overlay into the live envelope, leaving
-        # version, runtime-global and runtime-per-user byte-identical.
-        jq --slurpfile want "$SETTINGS" '.data.startup = $want[0]' \
-            "$TMPDIR_WORK/before.json" > "$TMPDIR_WORK/merged.json"
-        python3 "$CODEC_PY" "$TMPDIR_WORK/merged.json" "$DAT" 2>/dev/null
 
-        # Verify: startup matches tracked, everything else unchanged.
-        decode_full "$TMPDIR_WORK/after.json"
-        jq -e --slurpfile want "$SETTINGS" '.data.startup == $want[0]' \
-            "$TMPDIR_WORK/after.json" >/dev/null \
-            || { echo "error: verification failed (startup mismatch)" >&2; exit 1; }
-        for section in runtime-global runtime-per-user; do
-            jq -e --arg s "$section" \
-                --slurpfile a "$TMPDIR_WORK/before.json" --slurpfile b "$TMPDIR_WORK/after.json" \
-                -n '$b[0].data[$s] == $a[0].data[$s]' >/dev/null \
-                || { echo "error: verification failed ($section changed)" >&2; exit 1; }
-        done
-        echo "applied $SETTINGS -> $DAT" >&2
-        ;;
-esac
+Dumper.add_representer(str, represent_str)
+
+
+def ensure_codec():
+    if (CODEC_PY.is_file()
+            and hashlib.sha256(CODEC_PY.read_bytes()).hexdigest() == CODEC_SHA256):
+        return
+    print("fetching mod-settings codec...", file=sys.stderr)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = CODEC_PY.with_name(CODEC_PY.name + ".tmp")
+    urllib.request.urlretrieve(CODEC_URL, tmp)
+    if hashlib.sha256(tmp.read_bytes()).hexdigest() != CODEC_SHA256:
+        tmp.unlink(missing_ok=True)
+        sys.exit("error: codec checksum mismatch (upstream changed?)")
+    tmp.replace(CODEC_PY)
+
+
+def load_codec():
+    ensure_codec()
+    sys.path.insert(0, str(CACHE_DIR))
+    import factorio_data
+    return factorio_data
+
+
+def read_tracked():
+    if not SETTINGS.is_file():
+        sys.exit(f"error: no such file: {SETTINGS} (run import first)")
+    with SETTINGS.open() as f:
+        data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        sys.exit(f"error: {SETTINGS} is not a settings mapping")
+    return data
+
+
+def write_tracked(data):
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SETTINGS.with_name(SETTINGS.name + ".tmp")
+    with tmp.open("w") as f:
+        f.write(HEADER)
+        yaml.dump(data, f, Dumper=Dumper, sort_keys=False,
+                  allow_unicode=True, default_flow_style=False)
+    os.replace(tmp, SETTINGS)
+    print(f"wrote {SETTINGS}", file=sys.stderr)
+
+
+def decode_dat(codec):
+    with DAT.open("rb") as f:
+        settings = codec.ModSettings.load(f)
+    return json.loads(json.dumps(settings, cls=codec.JSONEncoder))
+
+
+def encode_dat(codec, envelope):
+    settings = json.loads(json.dumps(envelope), cls=codec.JSONDecoder)
+    with DAT.open("wb") as f:
+        settings.save(f)
+
+
+def live_startup(codec):
+    return decode_dat(codec)["data"]["startup"]
+
+
+def compact(value):
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def cmd_view(codec):
+    print(json.dumps(live_startup(codec), indent=2, ensure_ascii=False))
+
+
+def cmd_diff(codec):
+    live = live_startup(codec)
+    want = read_tracked()
+    for name in sorted(set(live) | set(want)):
+        got = live.get(name, MISSING)
+        expected = want.get(name, MISSING)
+        if got != expected:
+            left = "(absent)" if got is MISSING else compact(got)
+            right = "(absent)" if expected is MISSING else compact(expected)
+            print(f"{name}: {left} -> {right}")
+
+
+def cmd_import(codec):
+    write_tracked(live_startup(codec))
+
+
+def cmd_apply(codec):
+    want = read_tracked()
+    before = decode_dat(codec)
+    other_sections = {k: v for k, v in before["data"].items() if k != "startup"}
+
+    backup = DAT.with_name(f"{DAT.stem}.bak-{datetime.now():%Y%m%d%H%M%S}.dat")
+    shutil.copy2(DAT, backup)
+    print(f"backup: {backup}", file=sys.stderr)
+
+    before["data"]["startup"] = want
+    encode_dat(codec, before)
+
+    after = decode_dat(codec)
+    if after["data"]["startup"] != want:
+        sys.exit("error: verification failed (startup mismatch)")
+    if {k: v for k, v in after["data"].items() if k != "startup"} != other_sections:
+        sys.exit("error: verification failed (runtime sections changed)")
+    print(f"applied {SETTINGS} -> {DAT}", file=sys.stderr)
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="View and update Factorio startup mod settings.")
+    parser.add_argument("command", choices=["view", "diff", "apply", "import"])
+    args = parser.parse_args()
+
+    try:
+        import yaml  # noqa: F401  (checked here so --help works without it)
+    except ImportError:
+        sys.exit("error: PyYAML (python3-yaml) is not installed")
+    if not DAT.is_file():
+        sys.exit(f"error: no such file: {DAT}")
+
+    codec = load_codec()
+    {
+        "view": cmd_view,
+        "diff": cmd_diff,
+        "apply": cmd_apply,
+        "import": cmd_import,
+    }[args.command](codec)
+
+
+if __name__ == "__main__":
+    main()

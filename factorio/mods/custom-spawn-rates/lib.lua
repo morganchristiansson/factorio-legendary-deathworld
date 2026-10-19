@@ -6,6 +6,9 @@
 --   <path> <value>    set        +<path> <value>   add/merge
 --   -<path> <value>   remove     -<path>           clear
 --
+-- Entries are separated by ';' or a newline (so settings can use readable
+-- multi-line blocks). '#' starts a comment to the next ';'/newline.
+--
 -- Paths are lua-style addresses (unit.count, result_units["small-biter"],
 -- unit.ingredients). Values are one generic literal grammar:
 --
@@ -506,12 +509,13 @@ end
 -- Sections and entry application
 
 -- "a: e1;e2;b: e3" -> {a="e1;e2", b="e3"}; headerless entries are returned
--- as orphans. '#' starts a comment (to ';' or newline).
+-- as orphans. Entries split on ';' or newline; '#' starts a comment to
+-- ';' or newline.
 function Mod.sections(value)
     value = value:gsub("#[^;\n]*", "")
     local bag, orphans = {}, {}
     local current = nil
-    for token in value:gmatch("[^;]+") do
+    for token in value:gmatch("[^;\n]+") do
         local name = token:match("^%s*([%w%-%_.]+)%s*:")
         if name then
             current = name
@@ -632,7 +636,7 @@ end
 local function apply_text(target, noun, text, ctx)
     if not text or text:match("^%s*$") then return end
     text = text:gsub("#[^;\n]*", "")
-    for entry in text:gmatch("[^;]+") do
+    for entry in text:gmatch("[^;\n]+") do
         if entry:match("%S") then
             local entry_ctx = {}
             for k, v in pairs(ctx) do entry_ctx[k] = v end

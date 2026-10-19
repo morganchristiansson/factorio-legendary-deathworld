@@ -4,7 +4,7 @@
 #
 # Runs, in dependency order:
 #   1. tools/sync-mod-list       enabled mod set from factorio/data/mod-list.json
-#   2. tools/sync-mod-settings apply  startup settings from factorio/data/mod-settings.json
+#   2. tools/sync-mod-settings apply  startup settings from factorio/data/mod-settings.yaml
 #   3. tools/sync-save  scenario Lua into the save(s)
 #
 #   tools/sync-all [save...] [--check] [--force]
