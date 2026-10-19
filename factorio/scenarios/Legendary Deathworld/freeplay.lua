@@ -348,7 +348,6 @@ local on_unit_group_finished_gathering = function(event)
 		{type = defines.command.attack_area,destination = {0, 0},radius = 16,distraction = defines.distraction.by_anything},
 		{type = defines.command.build_base,destination = {0, 0},distraction = defines.distraction.none,ignore_planner = true}}}
 		event.group.set_command(command)
-		log(string.format("event=group-gathered, kind=attack, destination=0.0,0.0"))
 	else
 		local x = event.group.position.x
 		local y = event.group.position.y

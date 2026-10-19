@@ -564,8 +564,13 @@ end
 -- crash-site intro everyone knows) and reset DEFEAT_COUNTDOWN seconds
 -- later. Clearing the nests in the box before that lands cancels the whole
 -- thing -- the round goes back on, and a colony that comes back starts it
--- again.
+-- again (with the flyover rate-limited, see DEFEAT_CUTSCENE_COOLDOWN).
 local DEFEAT_COUNTDOWN = 60
+-- Clearing the nests cancels the countdown, but the swarm can rebuild in the
+-- box and cancel it again. Each cancellation ends the cutscene; retriggering
+-- it within this window can leave players stuck on the skip hint or keep
+-- respawn invulnerability alive, so one flyover per five minutes.
+local DEFEAT_CUTSCENE_COOLDOWN = 5 * 60 * 60
 -- Three nests and worms in the box is a colony, four is a loss.
 local DEFEAT_BASE_COUNT = 3
 local SPAWN_BOX = {left_top = {x = -32, y = -32}, right_bottom = {x = 32, y = 32}}
@@ -578,13 +583,17 @@ local base_in_spawn_box = function()
     return current_surface().find_entities_filtered{area = SPAWN_BOX, type = {"turret", "unit-spawner"}, force = "enemy"}
 end
 
--- The widest shot the engine still renders as the world instead of
--- simplified map blocks: a fixed limit, not something to derive per player.
--- It doubles as the cutscene's chart_mode_cutoff, so the flyout stays on the
--- rendered world whatever the cutscene controller would default to.
-local WIDE_ZOOM = 0.25
+-- Freeplay's own farthest zoom-out: the engine clamps the character game view
+-- at 0.3 and renders chart below it. The flyover stops at that floor as its
+-- widest shot, and the same value is the cutscene's chart_mode_cutoff, so the
+-- flyout stays on the rendered world instead of dropping to the chart.
+local WIDE_ZOOM = 0.3
 
 local watch_spawn_cutscene = function(nest)
+    if storage.defeat_cutscene_until and game.tick < storage.defeat_cutscene_until then
+        return
+    end
+    storage.defeat_cutscene_until = game.tick + DEFEAT_CUTSCENE_COOLDOWN
     -- Crash-site intro, retargeted: glide onto what they built, then pull
     -- back. Worm turrets are skipped -- the nests are
     -- what triggers the loss. No start_position: the engine starts each
@@ -608,6 +617,16 @@ local watch_spawn_cutscene = function(nest)
     }
     for _, player in pairs(game.connected_players) do
         if player.character and player.character.valid and not jail.is_jailed(player.name) then
+            -- A cutscene waypoint's zoom is clamped by the cutscene controller's
+            -- own zoom limits, which default to the player's dynamic,
+            -- window-size-dependent limits: the requested wide shot can be
+            -- pushed below chart_mode_cutoff and render as chart. Pin the
+            -- cutscene controller to the freeplay floor and force game view
+            -- there, so the shot is both reachable and on the rendered world.
+            player.set_zoom_limits(defines.controllers.cutscene, {
+                furthest = { zoom = WIDE_ZOOM },
+                furthest_game_view = { zoom = WIDE_ZOOM },
+            })
             player.set_controller{type = defines.controllers.cutscene, start_zoom = 2,
                 chart_mode_cutoff = WIDE_ZOOM, waypoints = waypoints}
             -- Same hint vanilla shows on the crash-site cutscene; TAB exits.
@@ -946,6 +965,9 @@ Public.perform_reset = function(actor, seed)
     for _, player in pairs(game.connected_players) do
         exit_cutscene(player)
     end
+    -- A completed reset starts a fresh round with its own flyover; the
+    -- cooldown only suppresses repeats in a round that did not reset.
+    storage.defeat_cutscene_until = nil
 
     -- actor: player name (or "server" for console) for manual /reset runs,
     -- nil for automatic resets. Manual resets are inferred by the presence
