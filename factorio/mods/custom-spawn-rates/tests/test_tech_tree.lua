@@ -196,6 +196,47 @@ test("tech: effects appends to a nil effects field", function()
     eq(tech.effects[1].recipe, "iron-chest")
 end)
 
+test("tech: -effects removes entries by field-match pattern", function()
+    local tech = { effects = {
+        { type = "ammo-damage", ammo_category = "flamethrower", modifier = 0.2 },
+        { type = "turret-attack", turret_id = "flamethrower-turret", modifier = 0.2 },
+    } }
+    Tech.apply_setting(tech, "t",
+        "-effects {type=turret-attack,turret_id=flamethrower-turret}")
+    eq(#tech.effects, 1)
+    eq(tech.effects[1].type, "ammo-damage")
+    LOG_LINES = {}
+    Tech.apply_setting(tech, "t", "-effects {type=turret-attack}")
+    assert(some_log("not present"), "expected not-present log, got: " .. all_logs())
+    eq(#tech.effects, 1)
+    -- A pattern matches on the listed fields only; a non-matching one
+    -- is a no-op, and a bare -effects still clears wholesale.
+    LOG_LINES = {}
+    Tech.apply_setting(tech, "t", "-effects {type=unlock-recipe}")
+    assert(some_log("not present"), "expected no-match, got: " .. all_logs())
+    Tech.apply_setting(tech, "t", "-effects")
+    eq(tech.effects, {})
+end)
+
+test("tech: removal report shows the old and the new effect list", function()
+    local tech = { effects = {
+        { type = "ammo-damage", ammo_category = "flamethrower", modifier = 0.2 },
+        { type = "turret-attack", turret_id = "flamethrower-turret", modifier = 0.2 },
+    } }
+    LOG_LINES = {}
+    Tech.apply_setting(tech, "t",
+        "-effects {type=turret-attack,turret_id=flamethrower-turret}")
+    local line = all_logs()
+    local before, after = line:match("^(.-) → (.-)$")
+    assert(before, "report must show before -> after, got: " .. line)
+    assert(before:find("turret_id=flamethrower-turret", 1, true),
+        "before must list the dropped effect: " .. line)
+    assert(not after:find("turret_id", 1, true),
+        "after must not list the dropped effect: " .. line)
+    assert(after:find("ammo_category=flamethrower", 1, true),
+        "after must keep the other effect: " .. line)
+end)
+
 -- ---------------------------------------------------------------------------
 -- Mixed / malformed / sections
 

@@ -262,18 +262,6 @@ end
 -- ---------------------------------------------------------------------------
 -- Ops
 
-local function eqv(a, b)
-    if a == b then return true end
-    if type(a) ~= "table" or type(b) ~= "table" then return false end
-    for k, v in pairs(a) do
-        if not eqv(v, b[k]) then return false end
-    end
-    for k in pairs(b) do
-        if a[k] == nil then return false end
-    end
-    return true
-end
-
 local function fmt(value)
     if value == nil then return "(none)" end
     local t = type(value)
@@ -340,9 +328,21 @@ local function list_remove(list, names, kind)
     local keep = {}
     for _, cur in ipairs(list) do
         local drop = false
-        for _, name in ipairs(names) do
-            local key = type(cur) == "table" and cur[1] or cur
-            if key == name then drop = true removed = true break end
+        if kind == "struct_list" then
+            -- names are field-match patterns: an entry drops when every
+            -- listed field equals the entry's value (subset match).
+            for _, pattern in ipairs(names) do
+                local match = true
+                for k, v in pairs(pattern) do
+                    if cur[k] ~= v then match = false break end
+                end
+                if match then drop = true removed = true break end
+            end
+        else
+            for _, name in ipairs(names) do
+                local key = type(cur) == "table" and cur[1] or cur
+                if key == name then drop = true removed = true break end
+            end
         end
         if not drop then keep[#keep + 1] = cur end
     end
@@ -360,18 +360,21 @@ local function do_op(root, path, op, literal, ctx)
         return nil, nil, "'" .. missing .. "' does not exist on this object"
     end
     local is_item = #segments > 1 and is_list(parent)
+    -- The "before" value for the change report, as text: the ops below
+    -- mutate the live table, so its old content has to be captured first.
+    local before_fmt = fmt(payload)
 
     if op == "clear" then
         if is_item then
             if index == nil then return nil, nil, "not present" end
             local before = parent[index][2]
             table.remove(parent, index)
-            return before, nil, nil
+            return fmt(before), nil, nil
         end
         if payload == nil then return nil, nil, "not present" end
         local after = is_list(payload) and {} or nil
         parent[key] = after
-        return payload, after, nil
+        return before_fmt, after, nil
     end
 
     if is_item then
@@ -382,15 +385,15 @@ local function do_op(root, path, op, literal, ctx)
             if index then
                 local before = parent[index][2]
                 parent[index][2] = value
-                return before, value, nil
+                return fmt(before), value, nil
             end
             parent[#parent + 1] = { key, value }
-            return nil, value, nil
+            return fmt(nil), value, nil
         end
         if index == nil then return nil, nil, "not present" end
         local before = parent[index][2]
         table.remove(parent, index)
-        return before, nil, nil
+        return fmt(before), nil, nil
     end
 
     local kind = classify(payload)
@@ -404,7 +407,7 @@ local function do_op(root, path, op, literal, ctx)
             end
             parent[key] = parent[key] or {}
             for k, v in pairs(value) do parent[key][k] = v end
-            return payload, parent[key], nil
+            return before_fmt, parent[key], nil
         end
         if op == "remove" then
             return nil, nil, "cannot remove from '" .. path .. "'"
@@ -417,10 +420,10 @@ local function do_op(root, path, op, literal, ctx)
             for k, v in pairs(parent[key]) do merged[k] = v end
             for k, v in pairs(value) do merged[k] = v end
             parent[key] = merged
-            return payload, merged, nil
+            return before_fmt, merged, nil
         end
         parent[key] = value
-        return payload, value, nil
+        return before_fmt, value, nil
     end
 
     -- List field, or absent/empty field: adopt the context hint or the
@@ -431,6 +434,25 @@ local function do_op(root, path, op, literal, ctx)
     end
 
     if op == "remove" then
+        -- Struct-list entries are removed by a field-match pattern, e.g.
+        -- "-effects {type=turret-attack,turret_id=flamethrower-turret}"
+        -- drops every effect whose listed fields all match. Other list
+        -- kinds remove by name (a map removes by key).
+        if kind == "struct_list" then
+            local patterns = {}
+            if type(literal) == "table" and type(literal[1]) == "table" then
+                for _, v in ipairs(literal) do patterns[#patterns + 1] = v end
+            elseif type(literal) == "table" and literal[1] == nil then
+                patterns[1] = literal
+            end
+            if #patterns == 0 then
+                return nil, nil, "bad value (want a {...} match pattern)"
+            end
+            if not list_remove(parent[key], patterns, kind) then
+                return nil, nil, "not present"
+            end
+            return before_fmt, parent[key], nil
+        end
         -- Remove takes names (or map keys) straight from the literal; no
         -- pair/struct shaping.
         local names = {}
@@ -454,12 +476,12 @@ local function do_op(root, path, op, literal, ctx)
                 end
             end
             if not removed then return nil, nil, "not present" end
-            return payload, parent[key], nil
+            return before_fmt, parent[key], nil
         end
         if not list_remove(parent[key], names, kind) then
             return nil, nil, "not present"
         end
-        return payload, parent[key], nil
+        return before_fmt, parent[key], nil
     end
 
     local value, err = shape(literal, kind)
@@ -467,7 +489,7 @@ local function do_op(root, path, op, literal, ctx)
 
     if op == "set" then
         parent[key] = value
-        return payload, value, nil
+        return before_fmt, value, nil
     end
 
     -- add
@@ -477,7 +499,7 @@ local function do_op(root, path, op, literal, ctx)
     else
         list_add(parent[key], value, kind)
     end
-    return payload, parent[key], nil
+    return before_fmt, parent[key], nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -594,13 +616,13 @@ function Mod.apply_entry(target, entry, ctx)
     local label = ctx.obj_label or path
     if op == "clear" or op == "remove" then
         Mod.report(label .. ": " .. (after == nil and "removed (was " ..
-            fmt(before) .. ")" or fmt(before) .. " → " .. fmt(after)) .. note)
+            before .. ")" or before .. " → " .. fmt(after)) .. note)
     elseif note ~= "" then
-        Mod.report(label .. ": " .. fmt(before) .. " → " .. fmt(after) .. note)
-    elseif eqv(before, after) then
+        Mod.report(label .. ": " .. before .. " → " .. fmt(after) .. note)
+    elseif before == fmt(after) then
         Mod.report(label .. ": already " .. fmt(after) .. " — no change")
     else
-        Mod.report(label .. ": " .. fmt(before) .. " → " .. fmt(after))
+        Mod.report(label .. ": " .. before .. " → " .. fmt(after))
     end
     return true, nil, label
 end

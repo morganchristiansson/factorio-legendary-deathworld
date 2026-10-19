@@ -168,24 +168,6 @@ local on_research_finished = function(event)
 	game.forces["player"].technologies["epic-quality"].researched = true
 	game.forces["player"].technologies["legendary-quality"].researched = true
 	end
-	if (event.research.name == "refined-flammables-1") then
-		game.forces["player"].set_turret_attack_modifier("flamethrower-turret", 0)
-	end
-	if (event.research.name == "refined-flammables-2") then
-		game.forces["player"].set_turret_attack_modifier("flamethrower-turret", 0)
-	end
-	if (event.research.name == "refined-flammables-3") then
-		game.forces["player"].set_turret_attack_modifier("flamethrower-turret", 0)
-	end
-	if (event.research.name == "refined-flammables-4") then
-		game.forces["player"].set_turret_attack_modifier("flamethrower-turret", 0)
-	end
-	if (event.research.name == "refined-flammables-5") then
-		game.forces["player"].set_turret_attack_modifier("flamethrower-turret", 0)
-	end
-	if (event.research.name == "refined-flammables-6") then
-		game.forces["player"].set_turret_attack_modifier("flamethrower-turret", 0)
-	end
     -- if (event.research.name == "stronger-explosives-2") then
 	-- 	game.forces["player"].set_ammo_damage_modifier("landmine", 0)
 	-- end

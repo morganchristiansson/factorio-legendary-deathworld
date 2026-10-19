@@ -1,150 +1,63 @@
 # Custom Spawn Rates + Tech Changes
 
-Factorio 2.0 mod: startup settings to tweak enemy spawns and tech tree.
-Applies on map load / startup-setting change. Blank = untouched.
+Startup settings that edit prototype tables: enemy nest spawns and
+tech-tree fields. Blank = untouched; applies at map load.
 
-The whole mod is one generic Lua-table manipulator (`lib.lua`): settings text
-is a mini language over real prototype tables, with no per-feature schema.
-Each entry is `[+|-]<path> <value>`:
+## Syntax
 
-```
-<path> <value>    set          +<path> <value>   add/merge
--<path> <value>   remove       -<path>           clear
-```
+Entries are `;`-separated:
 
-Paths are lua-style addresses (`unit.count`, `result_units`, `loot`).
-Values are one generic literal grammar — a number, a comma list
-(`a,b,c`), key=value pairs (`type=craft-item,count=200`), or brace groups
-(`{...},{...}`). The engine inspects the live prototype at apply time and
-shapes the value to match the field: a pair list gets k=v pairs, a map field
-gets a map, a scalar field wants a number. Unknown names in values are left
-verbatim so the engine fails map load naming the typo, same as vanilla.
+    <path> <value>     set
+    +<path> <value>    add/merge
+    -<path> <value>    remove
+    -<path>            clear
 
-Two shorthands sit on top of the engine:
+Values: `3`, `a,b,c`, `k=1,v=2`, or `{k=1},{k=2}`. The engine shapes the
+value to the live field, so one syntax covers numbers, name lists,
+key=value lists and lists of structs. Unknown names are left in place so
+the map fails naming the typo, like vanilla. `#` is a comment.
 
-- **spawns**: a bare unit name means `result_units.<name>` — that's the
-  whole spawn syntax below.
-- **techs**: `ingredients` means `unit.ingredients`, `unit` and
-  `research_trigger` are exclusive (setting one clears the other; clearing
-  one is skipped when it would leave neither), and `unit` merges so setting
-  count/time keeps existing ingredients.
+## Settings
 
-> Settings stage cannot read `data.raw`, so spawners/techs are not
-> enumerated; known nests get dedicated settings, everything else uses
-> free-form section settings.
+- `custom-spawn-rates-<nest>` — one per known nest (`biter-spawner`,
+  `spitter-spawner`, `gleba-spawner-small`, `gleba-spawner`). A bare unit
+  name means `result_units.<unit>`; rates are `evo=share`, normalised
+  across the nest.
+- `custom-spawn-rates-extra` — nests from other mods:
+  `nest-name: <entries>`.
+- `custom-spawn-rates-tech` — techs: `tech-name: <entries>`. `ingredients`
+  means `unit.ingredients`; `unit` and `research_trigger` are exclusive;
+  `unit` merges (setting count/time keeps ingredients).
 
-## Spawn rates
+## Examples from our server
 
-Per-nest setting, `;`-separated entries:
+Biter spawner:
 
-```
-<unit> <evo=rate,...>   add/override rates
--<unit>                 remove unit
--loot  /  -result_units clear the attribute
-```
+    medium-biter 0.2=0,0.6=0.3,0.7=0.1,0.9=0
+    big-biter 0.5=0,0.8=0.4,1.0=0.25
+    behemoth-biter 0.7=0,0.95=0.3
+    colossal-biter 0.8=0.0001,1.0=0.02
+    gargantuan-biter 0.95=0.0001,1.0=0.02
 
-Rates are `result_units` shares: interpolate linearly, normalised across
-the nest. Rate is 0 below the first evo — `0.35=0.01` delays until evo 0.35.
+Gleba nests: `-loot`
 
-```
-small-stomper-pentapod 0.35=0.01
-medium-biter 0.2=0.00,0.6=0.40
--small-biter;big-spitter 1=0.10
-```
+Techs:
 
-Other nests (`other nests` setting), `spawner:` sections:
-
-```
-some-modded-spawner: tiny-critter 0.5=0.02; -small-critter
-```
-
-Known nests: `biter-spawner`, `spitter-spawner`, `gleba-spawner-small`,
-`gleba-spawner`. Absent spawners (e.g. Gleba nests on a base-only
-install): skipped with log.
-
-## Tech changes
-
-One setting (`Custom tech changes`), `tech:` sections with `;`-separated ops.
-
-```
-prerequisites a,b,c        replace list (bare `prerequisites` clears)
-+prerequisites x,y         add to list
--prerequisites x,y         remove from list
-unit.count 300             set unit count (skipped if tech has no unit)
-unit.time 30               set unit time (skipped if tech has no unit)
-unit count=500,time=30     set lab cost, creating it when absent, and clear
-                           any trigger (count/time each optional, need one;
-                           existing ingredients are kept)
-unit.ingredients a=1,b=1   replace the science-pack cost wholesale
-                           (skipped if tech has no unit)
-+unit.ingredients a=1      merge packs into the cost (amounts replaced)
--unit.ingredients x,y      remove science packs from the cost
-research_trigger k=v,...   set research_trigger, clears unit (needs type=)
--research_trigger          clear trigger (skipped if tech has no unit)
-+effects {...},{...}       append effects (braces required for more than one)
-# ...                      comments (`#` to `;`/newline) are ignored
-```
-
-```
-biolab: prerequisites biter-egg-handling,kovarex-enrichment-process
-transport-belt-capacity-2: unit.count 300
-heating-tower: -research_trigger
-steel-processing: research_trigger type=craft-item,item=iron-plate,count=200
-```
-
-Later entries win. Unknown techs: skipped with log; unknown op paths
-(`count`, `time`, `prereq`, ...) are rejected with the supported list.
-
-Long values can be drafted grouped (one entry per line, `#` headings)
-and collapsed with `tools/settings-formatter.html` (open in a browser,
-both directions, no dependencies).
-
-## Notes
-
-- Unknown unit/prereq names are left in place so the engine fails map load
-  naming the typo (`assignID` error). Fix via save-select → Mod settings.
-- Malformed entries are logged and skipped; one bad entry never blocks others.
-- Applied changes print one report line each (`before → after`, no prefix);
-  repeats print `— no change`. Warnings (unknown names, bad entries,
-  skipped ops) stay on `log()` with the `custom-spawn-rates-` prefix.
-- Shipped defaults are blank, so the mod loads on base-only installs
-  (a Space Age unit name as default would fail map load there).
-- Setting a trigger clears `unit`, and setting `unit` clears the trigger;
-  clearing never leaves neither `unit` nor trigger (skipped with log).
-  Use the `unit` op (not `count`/`time` alone) to turn a trigger-only
-  tech into a lab tech.
-- Because the engine shapes values from the live prototype, arbitrary
-  prototype paths work for spawners (`-loot`, `-result_units`, ...) and
-  modded tech fields — no registry to extend.
+    recycling: research_trigger type=mine-entity,entity=scrap
+    calcite-processing: prerequisites; +effects {type=unlock-recipe,recipe=oil-refinery}
+    landfill: prerequisites; research_trigger type=mine-entity,entity=stone,count=50
+    rocket-turret: -unit.ingredients chemical-science-pack,space-science-pack; unit.count 100
+    refined-flammables-1: -effects {type=turret-attack,turret_id=flamethrower-turret}
 
 ## Files
 
 | File | Responsibility |
 |---|---|
-| `lib.lua` | The engine + both feature surfaces (parser, ops, reports; only `log`/`print` from Factorio API) |
-| `settings.lua` | Startup string-settings |
-| `data-final-fixes.lua` | Routes settings to prototypes |
-| `tools/package-mod` | Zip the mod for the portal (`./tools/package-mod`) |
-| `tools/settings-formatter.html` | Draft long setting values grouped, collapse to one line |
+| `lib.lua` | the engine (parser, ops, reports) |
+| `settings.lua` | startup string-settings |
+| `data-final-fixes.lua` | routes settings to prototypes |
 
 ## Tests
 
-```sh
-lua5.4 tests/run_tests.lua          # all unit suites, no Factorio needed
-lua5.4 tests/run_tests.lua spawn   # spawn-rate suite only
-lua5.4 tests/run_tests.lua tech    # tech-tree suite only
-python3 tests/e2e_dump.py           # e2e: real data stage via --dump-data
-```
-
-Unit suites live in `tests/test_spawn_rates.lua` / `tests/test_tech_tree.lua`
-(`tests/run_tests.lua` is the harness + cross-feature settings test). The
-e2e stays one script on purpose: a single `--dump-data` launch covers both
-features, so splitting it would only multiply launches. It runs two joined
-phases: fixed test values with space-age on (spawn remove/set incl. Gleba
-nests, trigger set/clear, count, prereq add/remove/replace), then mod
-defaults on a base-only install (regression test for the Space Age
-defaults bug). Isolated mod dir + config (redirected `write-data`,
-`--mod-directory` under a temp dir — the live install is never touched).
-Needs the Factorio binary (`--factorio-bin PATH` overrides the
-`/factorio/bin/x64/factorio` default); `--keep-tmp` keeps the dump for
-inspection.
+    lua5.4 tests/run_tests.lua    # unit suites, no Factorio
+    python3 tests/e2e_dump.py     # real data stage via --dump-data

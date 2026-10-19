@@ -44,7 +44,8 @@ TECH_VALUE = ("# e2e tech tweaks\n"
               "; +effects {type=unlock-recipe,recipe=iron-chest},{type=unlock-recipe,recipe=copper-cable}"
               "; -prerequisites automation-science-pack,electronics"
               "; logistics: prerequisites automation"
-              "; -unit.ingredients automation-science-pack")
+              "; -unit.ingredients automation-science-pack"
+              "; refined-flammables-1: -effects {type=turret-attack,turret_id=flamethrower-turret}")
 
 failures = []
 
@@ -231,6 +232,12 @@ def main():
                            e.get("recipe") in ("iron-chest", "copper-cable"))
     check("effect add works (braced list in one op)",
           auto_unlocks == ["copper-cable", "iron-chest"], auto_fx)
+
+    rf = data["technology"]["refined-flammables-1"]
+    rf_fx = rf.get("effects") or []
+    check("effect pattern-remove drops only the turret effect",
+          not any(e.get("type") == "turret-attack" for e in rf_fx)
+          and any(e.get("type") == "ammo-damage" for e in rf_fx), rf_fx)
 
     # Phase 2: shipped defaults on a base-only install (regression test —
     # Space Age unit names as defaults used to hard-fail map load here).
