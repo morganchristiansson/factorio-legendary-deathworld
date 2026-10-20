@@ -14,6 +14,7 @@ server data under `factorio/`. The active scenario is **Legendary Deathworld**.
 | `jail.lua` | Gulag: the pit surface, the jail records, escape prevention |
 | `groups.lua` | Permission groups and their commands: `/jail`, `/release`, `/freeze`, `/trust` |
 | `register.lua` | Transient registrations: one-shot tasks, the map reveal's `on_tick`, the expiry sweep and dynamic event filters — one module owns their save/load re-arming |
+| `offline_corpse.lua` | Players who stay offline too long: their gear is moved into a corpse where they logged off |
 
 **Boundary rule:** one-time setup/reset events belong in `reset.lua`; anything
 that happens during play stays in `freeplay.lua`. Player kit (`created_items`,
