@@ -16,9 +16,12 @@ local function close(player)
     frame.destroy()
   end
   -- Release player.opened only if it is still our frame; anything else
-  -- belongs to another GUI and must be left alone.
+  -- belongs to another GUI and must be left alone. player.opened can also be
+  -- an entity, item stack or equipment grid, none of which share the GUI
+  -- element's `name`, so check the object type before reading it.
   local opened = player.opened
-  if opened and opened.valid and opened.name == FRAME_NAME then
+  if opened and opened.valid and opened.object_name == "LuaGuiElement"
+      and opened.name == FRAME_NAME then
     player.opened = nil
   end
 end
