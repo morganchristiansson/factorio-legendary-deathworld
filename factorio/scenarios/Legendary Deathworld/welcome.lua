@@ -11,15 +11,20 @@ local BUTTON_NAME = "ld_welcome_button"
 local CLOSE_NAME = "ld_welcome_close"
 
 local function close(player)
+  -- Release player.opened first: once the frame is destroyed the reference is
+  -- invalid, so a post-destroy check can never match and player.opened would
+  -- be left pointing at a dead element -- which is what made E / ESC stop
+  -- closing the window. player.opened is not always a GUI element (an
+  -- equipment grid, entity, item stack or player can hold the slot), and only
+  -- GUI elements have a name, so check the type before reading it.
+  local opened = player.opened
+  if opened and opened.valid and opened.object_name == "LuaGuiElement"
+      and opened.name == FRAME_NAME then
+    player.opened = nil
+  end
   local frame = player.gui.screen[FRAME_NAME]
   if frame then
     frame.destroy()
-  end
-  -- Release player.opened only if it is still our frame; anything else
-  -- belongs to another GUI and must be left alone.
-  local opened = player.opened
-  if opened and opened.valid and opened.name == FRAME_NAME then
-    player.opened = nil
   end
 end
 
@@ -104,13 +109,15 @@ Public.events =
   end,
 
   [defines.events.on_gui_closed] = function(event)
-    -- Fired when the player closes our opened frame with E / ESC
-    local gui = event.element
-    if not (gui and gui.valid and gui.name == FRAME_NAME) then
+    local player = game.get_player(event.player_index)
+    if not player or not player.valid then
       return
     end
-    local player = game.get_player(event.player_index)
-    if player and player.valid then
+    -- The engine names a closed element only when it held player.opened. If
+    -- the player opens their armor or inventory over our frame, that slot is
+    -- taken and the next close reports nothing that points at us, leaving the
+    -- frame stranded. Any close while it is on screen dismisses it.
+    if player.gui.screen[FRAME_NAME] then
       close(player)
     end
   end,
