@@ -10,6 +10,10 @@ local FRAME_NAME = "ld_welcome_frame"
 local BUTTON_NAME = "ld_welcome_button"
 local CLOSE_NAME = "ld_welcome_close"
 
+-- Kill switch: while off, nothing creates the window or its top-bar button,
+-- so no code path reaches close()/show() at all. Flip to true to re-enable.
+local ENABLED = false
+
 local function close(player)
   local frame = player.gui.screen[FRAME_NAME]
   if frame then
@@ -27,6 +31,9 @@ local function close(player)
 end
 
 function Public.show(player)
+  if not ENABLED then
+    return
+  end
   close(player)
 
   local frame = player.gui.screen.add
@@ -77,7 +84,7 @@ local function toggle(player)
 end
 
 local function ensure_button(player)
-  if player.gui.top[BUTTON_NAME] then
+  if not ENABLED or player.gui.top[BUTTON_NAME] then
     return
   end
   player.gui.top.add
