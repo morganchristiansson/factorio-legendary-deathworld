@@ -38,6 +38,9 @@ CODEC_PY = os.path.join(REPO_ROOT, ".cache", "factorio-data-codec",
 
 # Values under test: every op family, plus blank-means-untouched.
 SPAWN_BITER = "-small-biter; medium-biter 0.2=0.0,0.6=0.4 # tune"
+ITEM_VALUE = ("item.ice: spoil_ticks 10m\n"
+              "item.nutrients: spoil_result copper-ore\n"
+              "capsule.raw-fish: spoil_ticks 20m")
 TECH_VALUE = ("# e2e tech tweaks\n"
               "steel-processing: research_trigger type=craft-item,item=iron-plate,count=200"
               "; automation: unit.count 50; +prerequisites electronics"
@@ -151,7 +154,7 @@ def main():
             {"value": "medium-strafer-pentapod 0.5=0.2"},
         "custom-spawn-rates-gleba-spawner-small":
             {"value": "-small-wriggler-pentapod"},
-        "custom-spawn-rates-extra": {"value": ""},
+        "custom-spawn-rates-extra": {"value": ITEM_VALUE},
         "custom-spawn-rates-tech": {"value": TECH_VALUE},
     })
     print(f"running {factorio_bin} --dump-data ...")
@@ -166,6 +169,8 @@ def main():
     check("tech setting applied in data stage",
           "steel-processing.research_trigger:" in log
           and "automation.unit.count:" in log and "→ 50" in log, log[-2000:])
+    check("proto setting applied in data stage",
+          "item.ice.spoil_ticks:" in log and "→ 36000" in log, log[-2000:])
 
     dump = os.path.join(user, "script-output", "data-raw-dump.json")
     check("data-raw-dump.json written", os.path.isfile(dump))
@@ -238,6 +243,21 @@ def main():
     check("effect pattern-remove drops only the turret effect",
           not any(e.get("type") == "turret-attack" for e in rf_fx)
           and any(e.get("type") == "ammo-damage" for e in rf_fx), rf_fx)
+
+    ice = data["item"]["ice"]
+    check("item spoil_ticks set from a duration",
+          ice.get("spoil_ticks") == 36000, ice.get("spoil_ticks"))
+    check("item spoil_ticks adds no spoil_result",
+          ice.get("spoil_result") is None, ice.get("spoil_result"))
+    nutrients = data["item"]["nutrients"]
+    check("item spoil_result set to a name",
+          nutrients.get("spoil_result") == "copper-ore",
+          nutrients.get("spoil_result"))
+    # raw-fish is a capsule, a sibling of 'item' in the same family: its
+    # own data.raw path reaches it.
+    raw_fish = data["capsule"]["raw-fish"]
+    check("proto path reaches a sibling type (capsule)",
+          raw_fish.get("spoil_ticks") == 72000, raw_fish.get("spoil_ticks"))
 
     # Phase 2: shipped defaults on a base-only install (regression test —
     # Space Age unit names as defaults used to hard-fail map load here).

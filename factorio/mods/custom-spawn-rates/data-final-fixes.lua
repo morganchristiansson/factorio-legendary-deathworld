@@ -6,6 +6,7 @@
 local Mod = require("lib")
 local SpawnRates = Mod.SpawnRates
 local Tech = Mod.Tech
+local Proto = Mod.Proto
 
 local PREFIX = SpawnRates.SETTING_PREFIX
 
@@ -60,12 +61,12 @@ for _, known in ipairs(SpawnRates.KNOWN_SPAWNERS) do
     end
 end
 
--- Free-form sections for modded spawners.
-local extra = settings.startup[SpawnRates.EXTRA_SETTING_NAME]
-apply_sections(extra and extra.value or "", "spawner", "spawner-name:",
-    find_spawner, SpawnRates.apply_setting)
-
 -- Free-form tech sections.
 local tech_value = settings.startup[Tech.TECH_SETTING_NAME]
 apply_sections(tech_value and tech_value.value or "", "technology", "tech-name:",
     find_tech, Tech.apply_setting)
+
+-- Free-form sections for any prototype in data.raw: 'type.name: <entries>'.
+local proto_value = settings.startup[Proto.SETTING_NAME]
+apply_sections(proto_value and proto_value.value or "", "prototype",
+    "type.name:", Proto.find, Proto.apply_setting)

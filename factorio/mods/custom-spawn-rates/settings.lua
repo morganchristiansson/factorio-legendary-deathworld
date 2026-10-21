@@ -10,6 +10,7 @@
 local Mod = require("lib")
 local SpawnRates = Mod.SpawnRates
 local Tech = Mod.Tech
+local Proto = Mod.Proto
 
 for _, known in ipairs(SpawnRates.KNOWN_SPAWNERS) do
     data:extend({
@@ -39,7 +40,7 @@ data:extend({
     },
     {
         type = "string-setting",
-        name = SpawnRates.EXTRA_SETTING_NAME,
+        name = Proto.SETTING_NAME,
         localised_name = { "custom-spawn-rates.extra-name" },
         localised_description = { "custom-spawn-rates.extra-tooltip" },
         setting_type = "startup",

@@ -236,14 +236,15 @@ test("data-final-fixes: dedicated setting for absent prototype is skipped", func
     eq(#spawners["biter-spawner"].result_units, 2)  -- other nests untouched
 end)
 
-test("data-final-fixes: extra setting reaches modded spawners", function()
+test("data-final-fixes: proto setting reaches any data.raw prototype", function()
     local spawners = fresh_world()
     data.raw["unit-spawner"] = spawners
     settings = {
         startup = {
-            [SpawnRates.EXTRA_SETTING_NAME] = { value =
-                "mod-spawner: nonexistent-unit 1=0.5; small-stomper-pentapod 0.35=0.01" ..
-                ";gone-spawner: -small-biter" },
+            [Proto.SETTING_NAME] = { value =
+                "unit-spawner.mod-spawner: result_units.nonexistent-unit 1=0.5" ..
+                "; result_units.small-stomper-pentapod 0.35=0.01" ..
+                ";unit-spawner.gone-spawner: result_units.small-biter" },
         },
     }
     dofile("data-final-fixes.lua")

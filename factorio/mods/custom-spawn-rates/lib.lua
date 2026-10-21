@@ -28,16 +28,21 @@
 -- tech names) are left in place and hard-fail prototype load, same as
 -- vanilla.
 --
--- The two feature surfaces are alias configs over the same engine:
+-- The feature surfaces are alias configs over the same engine:
 --   spawn  bare name -> result_units.<name>  (entry addresses a nest's unit)
 --   tech   ingredients -> unit.ingredients; unit and research_trigger are
 --          exclusive (setting one clears the other; clearing one is skipped
 --          when it would leave neither).
+--   proto  the prototype's path in data.raw ('item.ice'); the entries
+--          name its own attributes ('spoil_ticks', 'spoil_result', ...).
+--          Durations ('30m', '2h') are tick counts for '*_ticks' fields.
+--          Only attributes the game uses on that type may be set, so a
+--          typo is an error instead of a silently ignored field.
 -- Only log()/print() from the Factorio API; tests stub those hooks.
 
 local SETTING_PREFIX = "custom-spawn-rates-"
-local EXTRA_SETTING_NAME = "custom-spawn-rates-extra"
 local TECH_SETTING_NAME = "custom-spawn-rates-tech"
+local PROTO_SETTING_NAME = "custom-spawn-rates-extra"
 
 local Mod = {}
 
@@ -183,8 +188,9 @@ end
 -- ---------------------------------------------------------------------------
 -- Value shaping
 
--- Classify a live value: names / pair_list / struct_list / map / scalar.
+-- Classify a live value: names / pair_list / struct_list / map / scalar / string.
 local function classify(v)
+    if type(v) == "string" then return "string" end
     if type(v) ~= "table" then return "scalar" end
     if v[1] ~= nil then
         if type(v[1]) == "table" then
@@ -229,6 +235,15 @@ end
 
 -- Shape a literal for a field of the given kind.
 local function shape(literal, kind)
+    if kind == "string" then
+        -- A string field (spoil_result, fuel_value) holds one name; the
+        -- literal grammar parses a bare name into a one-element list.
+        if type(literal) == "table" and type(literal[1]) == "string"
+            and literal[2] == nil then
+            return literal[1]
+        end
+        return nil, "bad value (want a single name)"
+    end
     if kind == "scalar" then
         if type(literal) ~= "number" then
             return nil, "bad value '" .. tostring(literal) .. "' (want a number)"
@@ -401,6 +416,25 @@ local function do_op(root, path, op, literal, ctx)
 
     local kind = classify(payload)
     local empty = type(payload) == "table" and next(payload) == nil
+    if payload ~= nil and not empty and kind == "string" then
+        -- A string field (spoil_result) holds one name: set replaces it,
+        -- remove drops it when the name matches.
+        if op == "add" then
+            return nil, nil, "cannot add to '" .. path .. "'"
+        end
+        if op == "remove" then
+            local name = literal and literal[1] or nil
+            if type(name) ~= "string" or name ~= payload then
+                return nil, nil, "not present"
+            end
+            parent[key] = nil
+            return before_fmt, nil, nil
+        end
+        local value, err = shape(literal, "string")
+        if not value then return nil, nil, err end
+        parent[key] = value
+        return before_fmt, value, nil
+    end
     if payload ~= nil and not empty and (kind == "scalar" or kind == "map") then
         local value, err = shape(literal, kind)
         if not value then return nil, nil, err end
@@ -433,7 +467,11 @@ local function do_op(root, path, op, literal, ctx)
     -- literal's own shape.
     if payload == nil or empty then
         if op == "remove" then return nil, nil, "not present" end
-        kind = ctx.default_shape and ctx.default_shape[path] or kind_of(literal)
+        -- The context may know the shape of a field the target does not
+        -- carry yet (a sibling prototype of the same type shows it).
+        kind = (ctx.shape_of and ctx.shape_of(root, path))
+            or (ctx.default_shape and ctx.default_shape[path])
+            or kind_of(literal)
     end
 
     if op == "remove" then
@@ -545,7 +583,7 @@ function Mod.apply_entry(target, entry, ctx)
     local sigil, head, rest = entry:match("^%s*([-+]?)%s*(%S+)%s*(.-)%s*$")
     if not head then return nil, "empty entry" end
 
-    local path, err = ctx.resolve(head)
+    local path, err = ctx.resolve(head, target)
     if not path then return nil, err end
 
     -- Is this an item address (a key into a list)? Drives the value-less
@@ -588,7 +626,12 @@ function Mod.apply_entry(target, entry, ctx)
 
     local literal
     if rest ~= "" then
-        literal, err = Mod.parse_literal(rest)
+        -- A surface may re-read the value text (the item surface reads
+        -- durations like '1h'); the default is the shared grammar.
+        local parse = ctx.parse_value or function(_, text)
+            return Mod.parse_literal(text)
+        end
+        literal, err = parse(path, rest)
         if not literal then return nil, err end
     end
 
@@ -683,7 +726,6 @@ Mod.SpawnRates = {}
 local SpawnRates = Mod.SpawnRates
 
 SpawnRates.SETTING_PREFIX = SETTING_PREFIX
-SpawnRates.EXTRA_SETTING_NAME = EXTRA_SETTING_NAME
 SpawnRates.KNOWN_SPAWNERS = {
     { name = "biter-spawner", default = "" },
     { name = "spitter-spawner", default = "" },
@@ -726,6 +768,153 @@ local TECH_CONTEXT = {
         return head == "ingredients" and "unit.ingredients" or head
     end,
 }
+
+-- ---------------------------------------------------------------------------
+-- Prototype surface: any prototype in data.raw.
+--
+-- The section header is the prototype's path in data.raw ('item.ice'): the
+-- type is part of the address, because one name can live in several
+-- tables ('iron-plate' is both an item and a recipe). The entries name the
+-- prototype's own attributes ('spoil_ticks', 'spoil_result', ...); the
+-- engine inspects the live prototype and shapes the value to fit, so
+-- 'spoil_ticks 36000' writes a tick count and 'spoil_result copper-ore'
+-- writes a name.
+--
+-- An item with spoil_ticks and no spoil_result spoils into nothing: the
+-- item is destroyed when it spoils. Write '-spoil_result' to drop a
+-- result an item already has.
+
+-- Ticks per unit: Factorio runs at 60 ticks per second.
+local TICK_UNITS = { s = 60, m = 3600, h = 216000, d = 5184000 }
+
+-- The prototypes whose attributes a type may carry. Normally that is the
+-- type's own prototypes. The item family is the exception: 'item',
+-- 'capsule', 'tool', 'ammo', 'gun', 'module' and the rest are siblings
+-- that share one runtime table (prototypes.item) but get one data.raw
+-- table each, and the base ItemPrototype properties are valid on all of
+-- them. A stack_size marks the family: the field is required on
+-- ItemPrototype and exists on no other prototype, so the plain 'item'
+-- type shows what the base class accepts.
+local scope_cache, scope_raw
+local function proto_scope(ptype)
+    local raw = data and data.raw
+    if scope_raw ~= raw then scope_cache, scope_raw = {}, raw end
+    if not ptype then return {} end
+    if not scope_cache[ptype] then
+        local scope = {}
+        local function add(t)
+            for _, proto in pairs(raw[t] or {}) do
+                if type(proto) == "table" then scope[#scope + 1] = proto end
+            end
+        end
+        add(ptype)
+        -- An item-family type also accepts the base properties, which the
+        -- plain 'item' type shows.
+        local in_family = next(raw[ptype] or {}) ~= nil
+        for _, proto in pairs(raw[ptype] or {}) do
+            if type(proto) ~= "table" or proto.stack_size == nil then
+                in_family = false break
+            end
+        end
+        if in_family and ptype ~= "item" then add("item") end
+        scope_cache[ptype] = scope
+    end
+    return scope_cache[ptype]
+end
+
+-- Attribute names the game uses on the type, and the shape of a value the
+-- target does not carry yet (taken from a sibling prototype of the same
+-- scope). Factorio silently ignores an unknown property, so a typo would
+-- look applied and do nothing; this turns it into an error instead. The
+-- names come from the data, so there is no hardcoded list -- and on a
+-- base-only install the set holds no spoiling names at all, which is what
+-- keeps such a map loadable.
+local attr_cache, attr_raw
+local function known_type_attrs(ptype)
+    local raw = data and data.raw
+    if attr_raw ~= raw then attr_cache, attr_raw = {}, raw end
+    if not attr_cache[ptype] then
+        local set = {}
+        for _, proto in ipairs(proto_scope(ptype)) do
+            for attr in pairs(proto) do set[attr] = true end
+        end
+        attr_cache[ptype] = set
+    end
+    return attr_cache[ptype]
+end
+
+local function sibling_shape(target, path)
+    local segments = Mod.parse_path(path)
+    if not segments then return nil end
+    for _, proto in ipairs(proto_scope(target.type)) do
+        if proto ~= target then
+            local value = proto
+            for _, segment in ipairs(segments) do
+                if type(value) ~= "table" then value = nil break end
+                value = value[segment]
+                if value == nil then break end
+            end
+            if value ~= nil then return classify(value) end
+        end
+    end
+    return nil
+end
+
+local PROTO_CONTEXT = {
+    -- A tick-count field takes a duration: '1h' is 3600 seconds of game
+    -- time. Those are the fields the game names '*_ticks'.
+    parse_value = function(path, rest)
+        local field = path:match("([^%.%[%]]+)$")
+        if field and field:match("_ticks$") then
+            local count, unit = rest:match("^(%d+%.?%d*)%s*([smhd])$")
+            if count then return tonumber(count) * TICK_UNITS[unit] end
+        end
+        return Mod.parse_literal(rest)
+    end,
+    resolve = function(head, target)
+        -- A typo must be an error: Factorio silently ignores an unknown
+        -- property on a prototype, so the change would look applied and do
+        -- nothing. The known names come from the data; an attribute the
+        -- prototype itself carries always counts.
+        local attr = head:match("^([^%.%[]+)")
+        if attr and target then
+            -- 'type' and 'name' are the prototype's identity, not
+            -- attributes: writing either fails the whole map load.
+            if attr == "type" or attr == "name" then
+                return nil, "'" .. attr .. "' is the prototype's identity " ..
+                    "and cannot be set"
+            end
+            if target[attr] == nil and target.type
+                and not known_type_attrs(target.type)[attr] then
+                return nil, "unknown attribute '" .. attr .. "' for " ..
+                    target.type
+            end
+        end
+        return head
+    end,
+    -- The shape of a field the target does not carry yet.
+    shape_of = function(target, path)
+        return sibling_shape(target, path)
+    end,
+    label_path = function(entry)
+        return entry:match("^%s*[-+]?%s*(%S+)") or entry
+    end,
+}
+
+Mod.Proto = {}
+local Proto = Mod.Proto
+
+Proto.SETTING_NAME = PROTO_SETTING_NAME
+-- Find a prototype by its path in data.raw ('item.ice' -> data.raw.item.ice).
+Proto.find = function(path)
+    local ptype, name = path:match("^([^%.]+)%.(.+)$")
+    if not ptype then return nil end
+    local protos = data.raw[ptype]
+    return protos and protos[name]
+end
+Proto.apply_setting = function(proto, name, value)
+    apply_text(proto, name, value, PROTO_CONTEXT)
+end
 
 Mod.Tech = {}
 local Tech = Mod.Tech

@@ -13,7 +13,8 @@ custom-spawn-rates-biter-spawner:
 custom-spawn-rates-gleba-spawner:
   value: -loot
 custom-spawn-rates-extra:
-  value: ''
+  value: |-
+    item.ice: spoil_ticks 1h
 custom-spawn-rates-gleba-spawner-small:
   value: -loot
 custom-spawn-rates-spitter-spawner:

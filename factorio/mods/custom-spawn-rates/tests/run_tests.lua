@@ -3,9 +3,11 @@
 --   lua5.4 tests/run_tests.lua          all suites (from the mod directory)
 --   lua5.4 tests/run_tests.lua spawn   spawn-rate suite only
 --   lua5.4 tests/run_tests.lua tech    tech-tree suite only
+--   lua5.4 tests/run_tests.lua proto   prototype suite only
 --
--- Suites live in tests/test_spawn_rates.lua and tests/test_tech_tree.lua
--- and share this file's globals (test, eq, fresh_world, some_log, ...).
+-- Suites live in tests/test_spawn_rates.lua, tests/test_tech_tree.lua and
+-- tests/test_proto_surface.lua, and share this file's globals (test, eq,
+-- fresh_world, some_log, ...).
 
 local failures = 0
 local passed = 0
@@ -50,6 +52,7 @@ data = { raw = {} }
 Mod = dofile("lib.lua")
 SpawnRates = Mod.SpawnRates
 Tech = Mod.Tech
+Proto = Mod.Proto
 
 -- Capture the print() change report alongside log() warnings so
 -- some_log() sees both channels. (The engine reports through Mod.report;
@@ -104,9 +107,12 @@ end
 if only == nil or only == "tech" then
     dofile("tests/test_tech_tree.lua")
 end
+if only == nil or only == "proto" then
+    dofile("tests/test_proto_surface.lua")
+end
 
 -- Cross-feature: settings catalogue shape.
-test("settings: one setting per known spawner plus extra and tech", function()
+test("settings: one setting per known spawner plus tech and proto", function()
     data.raw = {}
     local extended = {}
     data.extend = function(_, items)  -- called as data:extend(t)
@@ -123,8 +129,8 @@ test("settings: one setting per known spawner plus extra and tech", function()
     for _, known in ipairs(SpawnRates.KNOWN_SPAWNERS) do
         defaults_by_name[SpawnRates.SETTING_PREFIX .. known.name] = known.default
     end
-    defaults_by_name[SpawnRates.EXTRA_SETTING_NAME] = ""
     defaults_by_name[Tech.TECH_SETTING_NAME] = ""
+    defaults_by_name[Proto.SETTING_NAME] = ""
     local names = {}
     for _, item in ipairs(extended) do
         names[item.name] = true
