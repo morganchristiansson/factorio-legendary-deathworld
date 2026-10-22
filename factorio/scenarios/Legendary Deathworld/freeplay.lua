@@ -270,6 +270,65 @@ end
 -- through register, which re-applies the stored filter on load.
 script.set_event_filter(defines.events.on_entity_died, apex_filter(nil))
 -----------------------------------------------------------------------
+-- Demolisher attacks: fired by the evolution stages below (one per
+-- milestone) and by a killed nest (the old trigger, restored, with its
+-- random chance). Either way the tier spawns on the nearest territory that
+-- still has a live demolisher -- cleared ground stays cleared -- but it
+-- guards a territory cut around spawn, the old spawn-territory trick, so it
+-- marches home onto the base under its own patrol AI and works itself into
+-- a rage there. Every territory cleared means re-infesting the furthest
+-- wilderness, never a worm scripted in beside the base.
+local demolisher_attack = function(name, trigger)
+    if prototypes.entity[name] == nil then
+        -- behemoth-demolisher without its mod: the trigger still lands.
+        log(string.format("event=demo-attack, trigger=%s, unit=%s, result=no-prototype", trigger, name))
+        return
+    end
+    local surface = reset.current_surface()
+    -- Source ground: the nearest live-guarded chunk wins; when everything is
+    -- cleared, the furthest chunk instead, re-infested from afar and never
+    -- scripted in beside the base. One slot holds it: any live chunk beats a
+    -- cleared one, live chunks compete by minimum distance, cleared ones by
+    -- maximum until the first live lands.
+    local source_pos, source_d, source_live = nil, nil, false
+    for _, territory in pairs(surface.get_territories()) do
+        local guarded = #territory.get_segmented_units() > 0
+        for _, chunk in pairs(territory.get_chunks()) do
+            if surface.is_chunk_generated({chunk.x, chunk.y}) then
+                local px, py = chunk.x * 32 + 16, chunk.y * 32 + 16
+                local d = px * px + py * py
+                if guarded then
+                    if not source_live or d < source_d then
+                        source_pos, source_d, source_live = {x = px, y = py}, d, true
+                    end
+                elseif not source_live and (source_d == nil or d > source_d) then
+                    source_pos, source_d = {x = px, y = py}, d
+                end
+            end
+        end
+    end
+    if source_pos == nil then
+        log(string.format("event=demo-attack, trigger=%s, unit=%s, result=no-source", trigger, name))
+        return
+    end
+    -- The attack's home: a territory around spawn, reused across milestones.
+    local home = surface.get_territory_for_chunk({0, 0})
+    if not (home and home.valid) then
+        home = surface.create_territory{chunks = {{-2,-2},{-1,-2},{0,-2},{1,-2},{-2,-1},{-1,-1},{0,-1},{1,-1},{-2,0},{-1,0},{0,0},{1,0},{-2,1},{-1,1},{0,1},{1,1}}}
+    end
+    if home == nil then
+        log(string.format("event=demo-attack, trigger=%s, unit=%s, result=no-territory", trigger, name))
+        return
+    end
+    local demo = surface.create_segmented_unit{name = name, position = source_pos, quality = "legendary", territory = home}
+    if demo == nil then
+        log(string.format("event=demo-attack, trigger=%s, unit=%s, result=spawn-failed", trigger, name))
+        return
+    end
+    game.print({"ld-announcement", {"ld-demo-attack", prototypes.entity[name].localised_name}})
+    log(string.format("event=demo-attack, trigger=%s, unit=%s", trigger, name))
+end
+-----------------------------------------------------------------------
 script.on_event(defines.events.on_post_entity_died,
 function(event)
     if event.prototype.type == "unit-spawner" then
@@ -328,6 +387,18 @@ function(event)
                 pos = surface.find_non_colliding_position("item-on-ground", event.position, 0.5, 0.1)
                 surface.create_entity{name = "item-on-ground", position = pos, stack = {name = "pentapod-egg", count = 1}}
             end
+        end
+        -- The old nest-kill trigger, restored: a killed nest can wake a
+        -- demolisher -- from a volcano, never where the nest died, which is
+        -- right outside the wall. Random chance, as it was: 1 in 20, 1 in 5
+        -- once the enemy is at its strongest. The tier follows the
+        -- milestone ladder.
+        local evo = game.forces["enemy"].get_evolution_factor(reset.current_surface())
+        if evo > 0.8 and math.random(1, evo > 0.98 and 5 or 20) == 1 then
+            local tier = "medium-demolisher"
+            if evo >= 0.95 then tier = "behemoth-demolisher"
+            elseif evo >= 0.90 then tier = "big-demolisher" end
+            demolisher_attack(tier, "nest-kill")
         end
     else
         if math.random(1, 10) == 1 then
@@ -422,64 +493,6 @@ local on_unit_group_finished_gathering = function(event)
 	end
 end
 -----------------------------------------------------------------------
--- Demolisher attacks: one per evolution milestone, fired from the stage
--- callbacks below. The milestone tier spawns on the nearest territory that
--- still has a live demolisher -- cleared ground stays cleared -- but it
--- guards a territory cut around spawn, the old spawn-territory trick, so it
--- marches home onto the base under its own patrol AI and works itself into
--- a rage there. Every territory cleared means re-infesting the furthest
--- wilderness, never a worm scripted in beside the base.
-local demolisher_attack = function(name)
-    if prototypes.entity[name] == nil then
-        -- behemoth-demolisher without its mod: the milestone still lands.
-        log(string.format("event=demo-attack, unit=%s, result=no-prototype", name))
-        return
-    end
-    local surface = reset.current_surface()
-    -- Source ground: the nearest live-guarded chunk wins; when everything is
-    -- cleared, the furthest chunk instead, re-infested from afar and never
-    -- scripted in beside the base. One slot holds it: any live chunk beats a
-    -- cleared one, live chunks compete by minimum distance, cleared ones by
-    -- maximum until the first live lands.
-    local source_pos, source_d, source_live = nil, nil, false
-    for _, territory in pairs(surface.get_territories()) do
-        local guarded = #territory.get_segmented_units() > 0
-        for _, chunk in pairs(territory.get_chunks()) do
-            if surface.is_chunk_generated({chunk.x, chunk.y}) then
-                local px, py = chunk.x * 32 + 16, chunk.y * 32 + 16
-                local d = px * px + py * py
-                if guarded then
-                    if not source_live or d < source_d then
-                        source_pos, source_d, source_live = {x = px, y = py}, d, true
-                    end
-                elseif not source_live and (source_d == nil or d > source_d) then
-                    source_pos, source_d = {x = px, y = py}, d
-                end
-            end
-        end
-    end
-    if source_pos == nil then
-        log(string.format("event=demo-attack, unit=%s, result=no-source", name))
-        return
-    end
-    -- The attack's home: a territory around spawn, reused across milestones.
-    local home = surface.get_territory_for_chunk({0, 0})
-    if not (home and home.valid) then
-        home = surface.create_territory{chunks = {{-2,-2},{-1,-2},{0,-2},{1,-2},{-2,-1},{-1,-1},{0,-1},{1,-1},{-2,0},{-1,0},{0,0},{1,0},{-2,1},{-1,1},{0,1},{1,1}}}
-    end
-    if home == nil then
-        log(string.format("event=demo-attack, unit=%s, result=no-territory", name))
-        return
-    end
-    local demo = surface.create_segmented_unit{name = name, position = source_pos, quality = "legendary", territory = home}
-    if demo == nil then
-        log(string.format("event=demo-attack, unit=%s, result=spawn-failed", name))
-        return
-    end
-    game.print({"ld-announcement", {"ld-demo-attack", prototypes.entity[name].localised_name}})
-    log(string.format("event=demo-attack, unit=%s", name))
-end
------------------------------------------------------------------------
 -- Evolution stages: applied and announced once, when the threshold is first
 -- crossed; texts come from locale/en/freeplay.cfg (ld-evo-milestone-*)
 local evo_stages = {
@@ -548,7 +561,7 @@ script.on_nth_tick(3600, function()
             if stage[3] then stage[3]() end
             game.print({"ld-announcement", {stage[2]}})
             log(string.format("event=evo-stage, evolution=%.2f", stage[1]))
-            if stage[4] then demolisher_attack(stage[4]) end
+            if stage[4] then demolisher_attack(stage[4], "milestone") end
         end
     end
     update_apex_spitter()
