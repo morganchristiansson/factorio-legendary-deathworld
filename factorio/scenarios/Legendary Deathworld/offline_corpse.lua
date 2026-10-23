@@ -91,7 +91,8 @@ local leave_corpse = function(player_index, entry)
         inventory_size = #stacks,
         player_index = player.index,
     }
-    corpse.active = false
+    -- corpse.active is read-only on this build; character-corpse is a
+    -- container with no AI or targeting, so the inactive flag is unneeded.
     local corpse_inventory = corpse.get_inventory(defines.inventory.character_corpse)
     for _, stack in ipairs(stacks) do
         if corpse_inventory.insert(stack) == 0 then
