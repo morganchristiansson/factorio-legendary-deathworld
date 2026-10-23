@@ -372,9 +372,12 @@ end
 
 -----------------------------------------------------------------------
 -- The single-player host is the only admin there, and in Default they have
--- neither the editor nor permission editing. on_player_created does not fire
--- when a save is loaded and on_singleplayer_init does not fire for a game that
--- was never multiplayer, so both hooks call this.
+-- neither the editor nor permission editing. on_player_created fires for a new
+-- single-player game but not when a save is loaded (the player already exists),
+-- so a loaded save relies on on_singleplayer_init to promote the host. That
+-- event does fire on a Load Game, but game.player is nil then (it is only
+-- populated inside player-initiated commands/events), so the host is
+-- game.connected_players[1].
 local function put_host_in_server_group(host)
     if game.is_multiplayer() or not (host and host.valid and host.admin) then
         return
@@ -414,7 +417,7 @@ Public.events =
     end,
 
     [defines.events.on_singleplayer_init] = function()
-        put_host_in_server_group(game.player)
+        put_host_in_server_group(game.connected_players[1])
     end,
 }
 
