@@ -213,7 +213,10 @@ local current_apex_spitter = function()
     if game == nil then
         return nil, 0
     end
-    local evo = game.forces["enemy"].get_evolution_factor(1)
+    -- the round's surface, not index 1: the dummy primary nauvis carries its
+    -- own (lower) evolution factor and would keep the apex unset forever
+    local surface = reset.current_surface()
+    local evo = surface and game.forces["enemy"].get_evolution_factor(surface) or 0
     if evo < 0.9 then
         return nil, evo -- matches when behemoth spitters appear naturally
     end
