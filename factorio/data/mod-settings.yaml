@@ -1,8 +1,6 @@
 # Factorio startup mod settings (tracked). Apply with tools/sync-mod-settings apply.
 # Long string settings use block scalars; ';' ends each entry.
 
-wall-repair-ignore:
-  value: ''
 custom-spawn-rates-biter-spawner:
   value: |-
     medium-biter 0.2=0,0.6=0.3,0.7=0.1,0.9=0;
@@ -28,7 +26,7 @@ custom-spawn-rates-tech:
   value: |-
     # Fulgora;
     recycling: prerequisites;
-    research_trigger type=mine-entity,entity=scrap;
+    research_trigger type=mine-entity,entities={scrap};
     holmium-processing: prerequisites recycling,oil-processing;
     tesla-weapons: prerequisites electromagnetic-science-pack,military-3;
     -unit.ingredients space-science-pack,utility-science-pack;
@@ -39,7 +37,7 @@ custom-spawn-rates-tech:
     big-mining-drill: prerequisites foundry,electric-mining-drill,electric-engine;
     # Gleba;
     landfill: prerequisites;
-    research_trigger type=mine-entity,entity=stone,count=50;
+    research_trigger type=mine-entity,entities={stone};
     steel-processing: prerequisites;
     research_trigger type=craft-item,item=iron-plate,count=200;
     agriculture: prerequisites landfill,steel-processing;

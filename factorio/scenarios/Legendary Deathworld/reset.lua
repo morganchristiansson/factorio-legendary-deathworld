@@ -250,7 +250,7 @@ local start_map_reveal = function(surface)
     end
     storage.reveal_surface = surface.name
     storage.reveal_index = 1
-    reveal_total = game.create_profiler()
+    reveal_total = helpers.create_profiler()
     reveal_total.restart()
     register.arm("map-reveal")
 end

@@ -31,6 +31,13 @@ test("parse_literal: brace struct lists", function()
     assert(err and err:find("between"), tostring(err))
 end)
 
+test("parse_literal: brace list values inside pair maps", function()
+    eq(SpawnRates.parse_literal("entities={stone}"), { entities = { "stone" } })
+    eq(SpawnRates.parse_literal("entities={a,b}"), { entities = { "a", "b" } })
+    eq(SpawnRates.parse_literal("type=mine-entity,entities={stone},count=50"),
+        { type = "mine-entity", entities = { "stone" }, count = 50 })
+end)
+
 -- ---------------------------------------------------------------------------
 -- Sections
 

@@ -93,7 +93,7 @@ end)
 
 test("tech: unit converts a trigger-only tech and clears the trigger", function()
     local tech = { prerequisites = { "concrete" },
-        research_trigger = { type = "mine-entity", entity = "copper-stromatolite" } }
+        research_trigger = { type = "mine-entity", entities = { "copper-stromatolite" } } }
     LOG_LINES = {}
     Tech.apply_setting(tech, "t", "unit count=500,time=30")
     assert(tech.research_trigger == nil, "trigger must be cleared")
@@ -293,7 +293,7 @@ test("tech: server Gleba stanzas against vanilla-shaped techs", function()
             unit = { count = 50, time = 5, ingredients =
                 { { "automation-science-pack", 1 } } } },
         agriculture = { prerequisites = { "planet-discovery-gleba" },
-            research_trigger = { type = "mine-entity", entity = "iron-stromatolite" } },
+            research_trigger = { type = "mine-entity", entities = { "iron-stromatolite" } } },
         ["stack-inserter"] = {
             prerequisites = { "carbon-fiber", "production-science-pack",
                 "utility-science-pack", "bulk-inserter" },
@@ -303,7 +303,7 @@ test("tech: server Gleba stanzas against vanilla-shaped techs", function()
                   { "utility-science-pack", 1 }, { "space-science-pack", 1 },
                   { "agricultural-science-pack", 1 } } } },
     }
-    local setting = "landfill: prerequisites; research_trigger type=mine-entity,entity=stone" ..
+    local setting = "landfill: prerequisites; research_trigger type=mine-entity,entities={stone}" ..
         ";steel-processing: prerequisites; research_trigger type=craft-item,item=iron-plate,count=200" ..
         ";agriculture: prerequisites landfill,steel-processing" ..
         ";stack-inserter: prerequisites carbon-fiber,production-science-pack,bulk-inserter" ..
@@ -314,11 +314,11 @@ test("tech: server Gleba stanzas against vanilla-shaped techs", function()
     end
     assert(not some_log("bad entry"), "all stanzas must parse: " .. all_logs())
     assert(raw.landfill.unit == nil, "landfill unit must be cleared")
-    eq(raw.landfill.research_trigger.entity, "stone")
+    eq(raw.landfill.research_trigger.entities, { "stone" })
     eq(#raw.landfill.prerequisites, 0)
     assert(raw["steel-processing"].unit == nil)
     eq(raw["steel-processing"].research_trigger.count, 200)
-    assert(raw.agriculture.research_trigger.entity == "iron-stromatolite")
+    eq(raw.agriculture.research_trigger.entities, { "iron-stromatolite" })
     eq(raw.agriculture.prerequisites, { "landfill", "steel-processing" })
     eq(raw["stack-inserter"].unit.count, 100)
     local ing = raw["stack-inserter"].unit.ingredients

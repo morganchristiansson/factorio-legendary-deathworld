@@ -52,9 +52,9 @@ Gleba nests: `-loot`
 
 Techs:
 
-    recycling: research_trigger type=mine-entity,entity=scrap
+    recycling: research_trigger type=mine-entity,entities={scrap}
     calcite-processing: prerequisites; +effects {type=unlock-recipe,recipe=oil-refinery}
-    landfill: prerequisites; research_trigger type=mine-entity,entity=stone,count=50
+    landfill: prerequisites; research_trigger type=mine-entity,entities={stone}
     rocket-turret: -unit.ingredients chemical-science-pack,space-science-pack; unit.count 100
     refined-flammables-1: -effects {type=turret-attack,turret_id=flamethrower-turret}
 

@@ -34,10 +34,6 @@
       "enabled": true
     },
     {
-      "name": "disable_automatic_artillery-morganc",
-      "enabled": false
-    },
-    {
       "name": "elevated-rails",
       "enabled": true
     },
@@ -46,7 +42,7 @@
       "enabled": true
     },
     {
-      "name": "no-wall-repair",
+      "name": "no-wall-repair-lite",
       "enabled": true
     },
     {

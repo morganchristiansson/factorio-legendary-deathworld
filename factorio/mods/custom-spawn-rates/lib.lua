@@ -53,14 +53,39 @@ local function trim(value)
     return (value:gsub("^%s+", "")):gsub("%s+$", "")
 end
 
+local function split_pairs(text)
+    local tokens, current, depth = {}, "", 0
+    for i = 1, #text do
+        local c = text:sub(i, i)
+        if c == "{" then
+            depth = depth + 1; current = current .. c
+        elseif c == "}" then
+            if depth > 0 then depth = depth - 1 end
+            current = current .. c
+        elseif c == "," and depth == 0 then
+            tokens[#tokens + 1] = current; current = ""
+        else
+            current = current .. c
+        end
+    end
+    if current ~= "" then tokens[#tokens + 1] = current end
+    return tokens
+end
+
 local function parse_pairs(text, what)
     local map = {}
-    for token in text:gmatch("[^,]+") do
+    for _, token in ipairs(split_pairs(text)) do
         local k, v = token:match("^%s*([^=%s]+)%s*=%s*(.-)%s*$")
         if not k then
             return nil, "bad " .. what .. " '" .. trim(token) .. "' (want key=value)"
         end
-        map[k] = tonumber(v) or v
+        if v:sub(1, 1) == "{" and v:sub(-1) == "}" then
+            local inner, err = Mod.parse_literal(v:sub(2, -2))
+            if not inner then return nil, err end
+            map[k] = inner
+        else
+            map[k] = tonumber(v) or v
+        end
     end
     if next(map) == nil then return nil, "empty " .. what end
     return map
