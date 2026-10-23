@@ -819,10 +819,6 @@ local finish_surface_swap = function(surface)
     -- poisoned-filter window).
     storage.apex_spitter = nil
     register.set_filter(defines.events.on_entity_died, Public.apex_filter(nil))
-    game.map_settings.enemy_expansion.settler_group_min_size = 8
-    game.map_settings.enemy_expansion.settler_group_max_size = 9
-    game.map_settings.pollution.enemy_attack_pollution_consumption_modifier = 1
-    game.map_settings.enemy_evolution.time_factor = 0.00004
     game.forces["player"].reset()
     -- /set-spawn moves the spawn point; a fresh map starts from the scenario's
     -- own again (the origin the crash site and spawn defences are built at --

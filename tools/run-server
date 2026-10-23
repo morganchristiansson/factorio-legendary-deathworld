@@ -24,6 +24,7 @@
 #   --save NAME|PATH       run --start-server over a save (NAME resolves under
 #                          $FACTORIO_DIR/saves); defaults to the newest save.
 #   --map-gen-settings F   pass --map-gen-settings F (world-creation flags).
+#   --map-settings F       pass --map-settings F (game.map_settings source).
 #   --rcon-port N          default 27015 (matches tools/rcon).
 #   --rcon-password P      default 12345  (matches tools/rcon).
 #   --port N               game network port (default 34197). When either is
@@ -72,6 +73,7 @@ while [[ $# -gt 0 ]]; do
         --scenario) load_mode="scenario"; VALUE="$2"; shift 2 ;;
         --save) load_mode="save"; VALUE="$2"; shift 2 ;;
         --map-gen-settings) MAP_GEN_SETTINGS="$2"; shift 2 ;;
+        --map-settings) MAP_SETTINGS="$2"; shift 2 ;;
         --rcon-port) RCON_PORT="$2"; RCON_PINNED=1; shift 2 ;;
         --rcon-password) RCON_PASSWORD="$2"; shift 2 ;;
         --port) GAME_PORT="$2"; GAME_PINNED=1; shift 2 ;;
@@ -182,6 +184,7 @@ case "$load_mode" in
 esac
 
 [[ -z "${MAP_GEN_SETTINGS:-}" ]] || BOOT_ARGS+=(--map-gen-settings "$MAP_GEN_SETTINGS")
+[[ -z "${MAP_SETTINGS:-}" ]] || BOOT_ARGS+=(--map-settings "$MAP_SETTINGS")
 [[ -z "${GAME_PORT:-}" ]] || BOOT_ARGS+=(--port "$GAME_PORT")
 
 echo "FACTORIO_DIR=$FACTORIO_DIR"
