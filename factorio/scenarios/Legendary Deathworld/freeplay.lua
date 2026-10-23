@@ -547,14 +547,6 @@ script.on_nth_tick(3600, function()
 	game.map_settings.asteroids.spawning_rate = 1
 	end
 
-	if game.forces["player"].technologies["logistic-science-pack"].researched then
-	local ex = game.map_settings.enemy_expansion
-	if ex.settler_group_min_size < 90 then
-	ex.settler_group_min_size = ex.settler_group_min_size + 1
-	ex.settler_group_max_size = ex.settler_group_max_size + 1
-	end
-	end
-
     -- starting time evo is 0.00004
     local evo = game.forces["enemy"].get_evolution_factor(reset.current_surface())
     storage.evo_stage = storage.evo_stage or 0
