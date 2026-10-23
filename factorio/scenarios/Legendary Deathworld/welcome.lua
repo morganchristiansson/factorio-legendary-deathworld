@@ -52,6 +52,11 @@ function Public.show(player)
     name = FRAME_NAME,
     direction = "vertical"
   }
+  if not frame.valid then
+    -- Broken GUI (seen on some joins): creating the frame yielded an invalid
+    -- element; bail instead of crashing on it.
+    return
+  end
   frame.auto_center = true
   -- Make the frame behave like a native window: E / ESC close it.
   player.opened = frame
@@ -120,9 +125,9 @@ Public.events =
     if groups.is_spectate_on() then
       player.print{"ld-spectate-mode"}
     end
-    storage.welcome_pending = storage.welcome_pending or {}
-    storage.welcome_pending[event.player_index] = true
-    register.arm("welcome-show")
+    -- The window is not shown on join: on some joins the player's GUI yields
+    -- invalid elements even a tick later, crashing the server. It stays
+    -- available via the top bar button.
   end,
 
   [defines.events.on_gui_closed] = function(event)
