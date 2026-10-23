@@ -965,6 +965,17 @@ Public.perform_reset = function(actor, seed)
     -- cooldown only suppresses repeats in a round that did not reset.
     storage.defeat_cutscene_until = nil
 
+    -- Offline players are skipped by the connected-player loop below; their
+    -- character (and inventory) goes down with the old surface, so the reset
+    -- already wipes their gear the same way it wipes connected players'.
+    -- Clear the offline-corpse tracking so a stale surface reference doesn't
+    -- fire leave_corpse against a deleted surface -- rejoined players get a
+    -- fresh kit via on_player_joined, not a corpse at old coordinates.
+    if storage.offline_corpse then
+        storage.offline_corpse = {}
+        register.disarm("offline-corpse")
+    end
+
     -- actor: player name (or "server" for console) for manual /reset runs,
     -- nil for automatic resets. Manual resets are inferred by the presence
     -- of the actor field. seed: optional map seed, random when nil.

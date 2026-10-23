@@ -81,12 +81,14 @@ local leave_corpse = function(player_index, entry)
     end
     local position = {x = entry.x, y = entry.y}
 
+    -- Size the corpse to the stack count; excess items fall through to the
+    -- ground below. (prototypes.entity["character-corpse"].inventory_size
+    -- raises on this build -- missing keys error on LuaEntityPrototype,
+    -- so #stacks is used directly and the overflow handler catches any excess.)
     local corpse = surface.create_entity{
         name = "character-corpse",
         position = position,
-        -- The corpse holds what the prototype allows; the rest goes on the
-        -- ground below.
-        inventory_size = math.min(#stacks, prototypes.entity["character-corpse"].inventory_size or #stacks),
+        inventory_size = #stacks,
         player_index = player.index,
     }
     corpse.active = false

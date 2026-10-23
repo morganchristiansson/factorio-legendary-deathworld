@@ -56,7 +56,7 @@ _G.defines = {
     events = {on_pre_player_left_game = 1},
 }
 _G.storage = {}
-_G.prototypes = {entity = {["character-corpse"] = {inventory_size = 80}}}
+_G.prototypes = {entity = {["character-corpse"] = {}}}
 _G.log = function() end
 _G.game = {
     tick = 0,
