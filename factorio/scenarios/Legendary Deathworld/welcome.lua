@@ -3,8 +3,23 @@
 -- (Similar to the map intro in the Biter Battles scenario.)
 
 local groups = require("groups")
+local register = require("register")
 
 local Public = {}
+
+-- The GUI is not ready while a joining client is still syncing: elements
+-- created during on_player_joined_game come back invalid. Show the window
+-- one tick later via a self-disarming one-shot, re-armed by each join.
+register.nth_tick("welcome-show", 2, function()
+    register.disarm("welcome-show")
+    for index in pairs(storage.welcome_pending or {}) do
+        local player = game.get_player(index)
+        if player and player.valid then
+            Public.show(player)
+        end
+    end
+    storage.welcome_pending = nil
+end)
 
 local FRAME_NAME = "ld_welcome_frame"
 local BUTTON_NAME = "ld_welcome_button"
@@ -105,7 +120,9 @@ Public.events =
     if groups.is_spectate_on() then
       player.print{"ld-spectate-mode"}
     end
-    Public.show(player)
+    storage.welcome_pending = storage.welcome_pending or {}
+    storage.welcome_pending[event.player_index] = true
+    register.arm("welcome-show")
   end,
 
   [defines.events.on_gui_closed] = function(event)
